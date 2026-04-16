@@ -15,7 +15,7 @@
       :disabled="uploading || reading"
       @click="openPicker"
     >
-      {{ reading ? "讀取中…" : uploading ? "上傳中…" : "上傳照片" }}
+      {{ reading ? "讀取中…" : uploading ? "上傳中…" : pendingItems.length ? "繼續加入照片" : "上傳照片" }}
     </button>
 
     <p v-if="noticeMessage" class="photo-upload__notice">{{ noticeMessage }}</p>
@@ -60,6 +60,13 @@
               />
             </template>
           </div>
+          <button
+            type="button"
+            class="photo-upload__remove"
+            @click="removeItem(item.key)"
+          >
+            ✕
+          </button>
         </li>
       </ul>
       <div class="photo-upload__review-actions">
@@ -69,7 +76,7 @@
           :disabled="reading"
           @click="cancelReview"
         >
-          取消
+          取消全部
         </button>
         <button
           type="button"
@@ -132,6 +139,12 @@ function revokePreviews() {
   pendingItems.value = []
 }
 
+function removeItem(key: string) {
+  const item = pendingItems.value.find((i) => i.key === key)
+  if (item) URL.revokeObjectURL(item.previewUrl)
+  pendingItems.value = pendingItems.value.filter((i) => i.key !== key)
+}
+
 function cancelReview() {
   revokePreviews()
   noticeMessage.value = ""
@@ -160,13 +173,19 @@ async function onFilesSelected(event: Event) {
     return
   }
 
-  if (files.length > MAX_FILES) {
-    noticeMessage.value = `已選擇超過 ${MAX_FILES} 張，僅會上傳前 ${MAX_FILES} 張。`
-    files = files.slice(0, MAX_FILES)
+  const remaining = MAX_FILES - pendingItems.value.length
+  if (remaining <= 0) {
+    noticeMessage.value = `已達 ${MAX_FILES} 張上限。`
+    input.value = ""
+    return
+  }
+
+  if (files.length > remaining) {
+    noticeMessage.value = `已選擇超過上限，僅加入前 ${remaining} 張。`
+    files = files.slice(0, remaining)
   }
 
   reading.value = true
-  revokePreviews()
 
   const next: PendingItem[] = []
 
@@ -196,11 +215,10 @@ async function onFilesSelected(event: Event) {
     }
 
     const hasGps = lat !== null && lng !== null
-
     next.push({ key, file, previewUrl, lat, lng, hasGps, placeName: "" })
   }
 
-  pendingItems.value = next
+  pendingItems.value = [...pendingItems.value, ...next]
   reading.value = false
   input.value = ""
 }
@@ -374,6 +392,22 @@ async function submitUpload() {
   flex-direction: column;
   gap: 0.25rem;
   font-size: 0.8125rem;
+}
+
+.photo-upload__remove {
+  flex-shrink: 0;
+  cursor: pointer;
+  padding: 0.15rem 0.35rem;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: 0.25rem;
+
+  &:hover {
+    color: var(--color-danger);
+    border-color: var(--color-danger);
+  }
 }
 
 .photo-upload__badge {

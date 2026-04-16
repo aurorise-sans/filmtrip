@@ -133,7 +133,15 @@ const { data: pageData, pending, error, refresh } = await useAsyncData(
 const fetchError = computed(() => error.value?.message ?? null)
 
 async function onPhotosUploaded() {
-  await refresh()
+  const { data: photos } = await supabase
+    .from("photos")
+    .select("id, image_url, created_at, latitude, longitude, place_name")
+    .eq("trip_id", tripId.value)
+    .order("created_at", { ascending: false })
+
+  if (pageData.value && photos) {
+    pageData.value = { ...pageData.value, photos: photos as PhotoRow[] }
+  }
 }
 
 function photoCaption(photo: PhotoRow) {

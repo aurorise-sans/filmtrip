@@ -1,0 +1,271 @@
+<template>
+  <div class="trip-detail">
+    <p v-if="pending || !userId" class="trip-detail__hint">載入中…</p>
+    <p v-else-if="fetchError" class="trip-detail__error" role="alert">
+      {{ fetchError }}
+    </p>
+    <template v-else-if="pageData">
+      <header class="trip-detail__header">
+        <NuxtLink class="trip-detail__back" to="/profile">← 返回個人</NuxtLink>
+        <h1 class="trip-detail__title">{{ pageData.trip.name }}</h1>
+        <p class="trip-detail__dates">
+          <time :datetime="pageData.trip.start_date">{{
+            formatDate(pageData.trip.start_date)
+          }}</time>
+          <span class="trip-detail__sep" aria-hidden="true">—</span>
+          <time :datetime="pageData.trip.end_date">{{
+            formatDate(pageData.trip.end_date)
+          }}</time>
+        </p>
+      </header>
+
+      <section
+        class="trip-detail__section"
+        aria-labelledby="trip-photos-heading"
+      >
+        <h2 id="trip-photos-heading" class="trip-detail__section-title">
+          照片
+        </h2>
+
+        <div v-if="pageData.photos.length" class="trip-detail__grid">
+          <figure
+            v-for="photo in pageData.photos"
+            :key="photo.id"
+            class="trip-detail__figure"
+          >
+            <img
+              class="trip-detail__thumb"
+              :src="photo.image_url"
+              :alt="`照片 ${photo.id}`"
+              loading="lazy"
+              decoding="async"
+            />
+          </figure>
+        </div>
+
+        <div v-else class="trip-detail__empty">
+          <p class="trip-detail__empty-text">尚無照片</p>
+          <button type="button" class="trip-detail__upload-btn" disabled>
+            上傳照片
+          </button>
+        </div>
+      </section>
+    </template>
+  </div>
+</template>
+
+<script setup lang="ts">
+import type { JwtPayload } from "@supabase/supabase-js"
+
+type TripDetail = {
+  id: string
+  name: string
+  start_date: string
+  end_date: string
+}
+
+type PhotoRow = {
+  id: string
+  image_url: string
+  created_at: string
+}
+
+const route = useRoute()
+const supabase = useSupabaseClient()
+const userClaims = useSupabaseUser()
+
+const userId = computed(
+  () => (userClaims.value as JwtPayload | null)?.sub ?? null,
+)
+
+const tripId = computed(() => {
+  const id = route.params.id
+  if (typeof id === "string") {
+    return id
+  }
+  if (Array.isArray(id) && id[0]) {
+    return id[0]
+  }
+  return ""
+})
+
+const { data: pageData, pending, error } = await useAsyncData(
+  () => `trip-detail-${tripId.value}`,
+  async () => {
+    if (!tripId.value) {
+      await navigateTo("/profile", { replace: true })
+      return null
+    }
+
+    if (!userId.value) {
+      return null
+    }
+
+    const { data: trip, error: tripErr } = await supabase
+      .from("trips")
+      .select("id, name, start_date, end_date, user_id")
+      .eq("id", tripId.value)
+      .maybeSingle()
+
+    if (tripErr || !trip) {
+      await navigateTo("/profile", { replace: true })
+      return null
+    }
+
+    const { data: photos, error: photosErr } = await supabase
+      .from("photos")
+      .select("id, image_url, created_at")
+      .eq("trip_id", tripId.value)
+      .order("created_at", { ascending: false })
+
+    if (photosErr) {
+      throw photosErr
+    }
+
+    return {
+      trip: trip as TripDetail,
+      photos: (photos ?? []) as PhotoRow[],
+    }
+  },
+  {
+    watch: [tripId, userId],
+  },
+)
+
+const fetchError = computed(() => error.value?.message ?? null)
+
+useHead(() => ({
+  title: pageData.value?.trip?.name
+    ? `${pageData.value.trip.name} | Filmtrip`
+    : "旅程 | Filmtrip",
+}))
+
+function formatDate(isoDate: string) {
+  const d = new Date(isoDate + "T12:00:00")
+  if (Number.isNaN(d.getTime())) {
+    return isoDate
+  }
+  return d.toLocaleDateString("zh-TW", {
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+  })
+}
+</script>
+
+<style lang="scss" scoped>
+.trip-detail {
+  max-width: 56rem;
+  margin: 0 auto;
+  padding: 2rem 1.25rem 3rem;
+
+  &__hint {
+    margin: 0;
+    font-size: 0.9375rem;
+    color: var(--color-text-muted);
+  }
+
+  &__error {
+    margin: 0;
+    padding: 0.65rem 0.75rem;
+    font-size: 0.875rem;
+    color: var(--color-danger);
+    background: var(--color-danger-bg);
+    border-radius: 0.375rem;
+  }
+
+  &__header {
+    margin-bottom: 2rem;
+  }
+
+  &__back {
+    display: inline-block;
+    margin-bottom: 0.75rem;
+    font-size: 0.9375rem;
+    color: var(--color-accent);
+    text-decoration: none;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+
+  &__title {
+    margin: 0 0 0.5rem;
+    font-size: 1.75rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: var(--color-text);
+  }
+
+  &__dates {
+    margin: 0;
+    font-size: 1rem;
+    color: var(--color-text-muted);
+  }
+
+  &__sep {
+    margin: 0 0.35rem;
+    opacity: 0.6;
+  }
+
+  &__section {
+    margin-top: 0.5rem;
+  }
+
+  &__section-title {
+    margin: 0 0 1rem;
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: var(--color-text);
+  }
+
+  &__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr));
+    gap: 0.65rem;
+  }
+
+  &__figure {
+    margin: 0;
+    aspect-ratio: 1;
+    border-radius: 0.375rem;
+    overflow: hidden;
+    background: var(--color-border);
+    border: 1px solid var(--color-border);
+  }
+
+  &__thumb {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  &__empty {
+    padding: 2rem 1rem;
+    text-align: center;
+    border: 1px dashed var(--color-border-strong);
+    border-radius: 0.5rem;
+    background: var(--color-surface);
+  }
+
+  &__empty-text {
+    margin: 0 0 1rem;
+    font-size: 0.9375rem;
+    color: var(--color-text-muted);
+  }
+
+  &__upload-btn {
+    cursor: not-allowed;
+    padding: 0.5rem 1rem;
+    font: inherit;
+    font-size: 0.9375rem;
+    color: var(--color-text-muted);
+    background: #f3f4f6;
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+    opacity: 0.85;
+  }
+}
+</style>

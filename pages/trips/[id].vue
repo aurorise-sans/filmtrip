@@ -1,6 +1,6 @@
 <template>
   <div class="trip-detail">
-    <p v-if="pending || !userId" class="trip-detail__hint">載入中…</p>
+    <p v-if="pending || (!pageData && !fetchError)" class="trip-detail__hint">載入中…</p>
     <p v-else-if="fetchError" class="trip-detail__error" role="alert">
       {{ fetchError }}
     </p>
@@ -27,12 +27,12 @@
           <h2 id="trip-photos-heading" class="trip-detail__section-title">
             照片
           </h2>
-          <TripPhotoUploadPanel
-            v-if="userId && tripId"
-            :trip-id="tripId"
-            :user-id="userId"
-            @uploaded="onPhotosUploaded"
-          />
+<TripPhotoUploadPanel
+  v-if="tripId"
+  :trip-id="tripId"
+  :user-id="userId || ''"
+  @uploaded="onPhotosUploaded"
+/>
         </div>
 
         <div v-if="pageData.photos.length" class="trip-detail__grid">
@@ -66,8 +66,6 @@
 </template>
 
 <script setup lang="ts">
-import type { JwtPayload } from "@supabase/supabase-js"
-
 type TripDetail = {
   id: string
   name: string
@@ -88,18 +86,12 @@ const route = useRoute()
 const supabase = useSupabaseClient()
 const userClaims = useSupabaseUser()
 
-const userId = computed(
-  () => (userClaims.value as JwtPayload | null)?.sub ?? null,
-)
+const userId = computed(() => userClaims.value?.id ?? null)
 
 const tripId = computed(() => {
   const id = route.params.id
-  if (typeof id === "string") {
-    return id
-  }
-  if (Array.isArray(id) && id[0]) {
-    return id[0]
-  }
+  if (typeof id === "string") return id
+  if (Array.isArray(id) && id[0]) return id[0]
   return ""
 })
 
@@ -108,10 +100,6 @@ const { data: pageData, pending, error, refresh } = await useAsyncData(
   async () => {
     if (!tripId.value) {
       await navigateTo("/profile", { replace: true })
-      return null
-    }
-
-    if (!userId.value) {
       return null
     }
 
@@ -132,18 +120,14 @@ const { data: pageData, pending, error, refresh } = await useAsyncData(
       .eq("trip_id", tripId.value)
       .order("created_at", { ascending: false })
 
-    if (photosErr) {
-      throw photosErr
-    }
+    if (photosErr) throw photosErr
 
     return {
       trip: trip as TripDetail,
       photos: (photos ?? []) as PhotoRow[],
     }
   },
-  {
-    watch: [tripId, userId],
-  },
+  { watch: [tripId] },
 )
 
 const fetchError = computed(() => error.value?.message ?? null)
@@ -154,9 +138,7 @@ async function onPhotosUploaded() {
 
 function photoCaption(photo: PhotoRow) {
   const name = photo.place_name?.trim()
-  if (name) {
-    return name
-  }
+  if (name) return name
   if (photo.latitude != null && photo.longitude != null) {
     return `${photo.latitude.toFixed(4)}, ${photo.longitude.toFixed(4)}`
   }
@@ -171,9 +153,7 @@ useHead(() => ({
 
 function formatDate(isoDate: string) {
   const d = new Date(isoDate + "T12:00:00")
-  if (Number.isNaN(d.getTime())) {
-    return isoDate
-  }
+  if (Number.isNaN(d.getTime())) return isoDate
   return d.toLocaleDateString("zh-TW", {
     year: "numeric",
     month: "numeric",

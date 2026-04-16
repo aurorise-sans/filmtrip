@@ -91,7 +91,6 @@ const MAX_FILES = 36
 
 const props = defineProps<{
   tripId: string
-  userId: string
 }>()
 
 const emit = defineEmits<{
@@ -99,6 +98,8 @@ const emit = defineEmits<{
 }>()
 
 const supabase = useSupabaseClient()
+const user = useSupabaseUser()
+const userId = computed(() => user.value?.id ?? "")
 
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const reading = ref(false)
@@ -147,9 +148,7 @@ onBeforeUnmount(() => {
 async function onFilesSelected(event: Event) {
   const input = event.target as HTMLInputElement
   const list = input.files
-  if (!list?.length) {
-    return
-  }
+  if (!list?.length) return
 
   errorMessage.value = ""
   noticeMessage.value = ""
@@ -198,15 +197,7 @@ async function onFilesSelected(event: Event) {
 
     const hasGps = lat !== null && lng !== null
 
-    next.push({
-      key,
-      file,
-      previewUrl,
-      lat,
-      lng,
-      hasGps,
-      placeName: "",
-    })
+    next.push({ key, file, previewUrl, lat, lng, hasGps, placeName: "" })
   }
 
   pendingItems.value = next
@@ -228,9 +219,7 @@ async function submitUpload() {
     }
   }
 
-  if (!pendingItems.value.length) {
-    return
-  }
+  if (!pendingItems.value.length) return
 
   uploading.value = true
 
@@ -247,10 +236,8 @@ async function submitUpload() {
     for (const item of pendingItems.value) {
       const match = item.file.name.match(/(\.[^.]+)$/)
       const ext = (match ? match[1] : ".jpg").toLowerCase()
-      const safeExt = /^\.(jpe?g|png|gif|webp|heic|heif)$/i.test(ext)
-        ? ext
-        : ".jpg"
-      const objectPath = `${props.userId}/${props.tripId}/${crypto.randomUUID()}${safeExt}`
+      const safeExt = /^\.(jpe?g|png|gif|webp|heic|heif)$/i.test(ext) ? ext : ".jpg"
+      const objectPath = `${userId.value}/${props.tripId}/${crypto.randomUUID()}${safeExt}`
 
       const { error: upErr } = await supabase.storage
         .from("photos")
@@ -260,15 +247,13 @@ async function submitUpload() {
           contentType: item.file.type || "image/jpeg",
         })
 
-      if (upErr) {
-        throw new Error(upErr.message)
-      }
+      if (upErr) throw new Error(upErr.message)
 
       const { data: pub } = supabase.storage.from("photos").getPublicUrl(objectPath)
 
       inserts.push({
         trip_id: props.tripId,
-        user_id: props.userId,
+        user_id: userId.value,
         image_url: pub.publicUrl,
         latitude: item.hasGps ? item.lat : null,
         longitude: item.hasGps ? item.lng : null,
@@ -277,16 +262,12 @@ async function submitUpload() {
     }
 
     const { error: insErr } = await supabase.from("photos").insert(inserts)
-
-    if (insErr) {
-      throw new Error(insErr.message)
-    }
+    if (insErr) throw new Error(insErr.message)
 
     cancelReview()
     emit("uploaded")
   } catch (e) {
-    errorMessage.value =
-      e instanceof Error ? e.message : "上傳失敗，請稍後再試。"
+    errorMessage.value = e instanceof Error ? e.message : "上傳失敗，請稍後再試。"
   } finally {
     uploading.value = false
   }

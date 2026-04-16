@@ -44,8 +44,9 @@ export interface Database {
           trip_id: string
           user_id: string
           image_url: string
-          latitude: number
-          longitude: number
+          latitude: number | null
+          longitude: number | null
+          place_name: string | null
           created_at: string
         }
         Insert: {
@@ -53,16 +54,18 @@ export interface Database {
           trip_id: string
           user_id: string
           image_url: string
-          latitude: number
-          longitude: number
+          latitude?: number | null
+          longitude?: number | null
+          place_name?: string | null
           created_at?: string
         }
         Update: {
           trip_id?: string
           user_id?: string
           image_url?: string
-          latitude?: number
-          longitude?: number
+          latitude?: number | null
+          longitude?: number | null
+          place_name?: string | null
         }
         Relationships: []
       }

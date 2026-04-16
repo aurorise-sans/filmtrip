@@ -23,9 +23,17 @@
         class="trip-detail__section"
         aria-labelledby="trip-photos-heading"
       >
-        <h2 id="trip-photos-heading" class="trip-detail__section-title">
-          照片
-        </h2>
+        <div class="trip-detail__section-head">
+          <h2 id="trip-photos-heading" class="trip-detail__section-title">
+            照片
+          </h2>
+          <TripPhotoUploadPanel
+            v-if="userId && tripId"
+            :trip-id="tripId"
+            :user-id="userId"
+            @uploaded="onPhotosUploaded"
+          />
+        </div>
 
         <div v-if="pageData.photos.length" class="trip-detail__grid">
           <figure
@@ -36,18 +44,21 @@
             <img
               class="trip-detail__thumb"
               :src="photo.image_url"
-              :alt="`照片 ${photo.id}`"
+              :alt="photoCaption(photo) || '旅程照片'"
               loading="lazy"
               decoding="async"
             />
+            <figcaption
+              v-if="photoCaption(photo)"
+              class="trip-detail__caption"
+            >
+              {{ photoCaption(photo) }}
+            </figcaption>
           </figure>
         </div>
 
         <div v-else class="trip-detail__empty">
           <p class="trip-detail__empty-text">尚無照片</p>
-          <button type="button" class="trip-detail__upload-btn" disabled>
-            上傳照片
-          </button>
         </div>
       </section>
     </template>
@@ -68,6 +79,9 @@ type PhotoRow = {
   id: string
   image_url: string
   created_at: string
+  latitude: number | null
+  longitude: number | null
+  place_name: string | null
 }
 
 const route = useRoute()
@@ -89,7 +103,7 @@ const tripId = computed(() => {
   return ""
 })
 
-const { data: pageData, pending, error } = await useAsyncData(
+const { data: pageData, pending, error, refresh } = await useAsyncData(
   () => `trip-detail-${tripId.value}`,
   async () => {
     if (!tripId.value) {
@@ -114,7 +128,7 @@ const { data: pageData, pending, error } = await useAsyncData(
 
     const { data: photos, error: photosErr } = await supabase
       .from("photos")
-      .select("id, image_url, created_at")
+      .select("id, image_url, created_at, latitude, longitude, place_name")
       .eq("trip_id", tripId.value)
       .order("created_at", { ascending: false })
 
@@ -133,6 +147,21 @@ const { data: pageData, pending, error } = await useAsyncData(
 )
 
 const fetchError = computed(() => error.value?.message ?? null)
+
+async function onPhotosUploaded() {
+  await refresh()
+}
+
+function photoCaption(photo: PhotoRow) {
+  const name = photo.place_name?.trim()
+  if (name) {
+    return name
+  }
+  if (photo.latitude != null && photo.longitude != null) {
+    return `${photo.latitude.toFixed(4)}, ${photo.longitude.toFixed(4)}`
+  }
+  return ""
+}
 
 useHead(() => ({
   title: pageData.value?.trip?.name
@@ -213,8 +242,17 @@ function formatDate(isoDate: string) {
     margin-top: 0.5rem;
   }
 
+  &__section-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem 1rem;
+    margin-bottom: 1rem;
+  }
+
   &__section-title {
-    margin: 0 0 1rem;
+    margin: 0;
     font-size: 1.125rem;
     font-weight: 600;
     color: var(--color-text);
@@ -228,18 +266,29 @@ function formatDate(isoDate: string) {
 
   &__figure {
     margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    min-width: 0;
+  }
+
+  &__thumb {
     aspect-ratio: 1;
+    width: 100%;
     border-radius: 0.375rem;
     overflow: hidden;
     background: var(--color-border);
     border: 1px solid var(--color-border);
+    object-fit: cover;
+    display: block;
   }
 
-  &__thumb {
-    display: block;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
+  &__caption {
+    margin: 0;
+    font-size: 0.6875rem;
+    line-height: 1.3;
+    color: var(--color-text-muted);
+    word-break: break-word;
   }
 
   &__empty {
@@ -251,21 +300,9 @@ function formatDate(isoDate: string) {
   }
 
   &__empty-text {
-    margin: 0 0 1rem;
+    margin: 0;
     font-size: 0.9375rem;
     color: var(--color-text-muted);
-  }
-
-  &__upload-btn {
-    cursor: not-allowed;
-    padding: 0.5rem 1rem;
-    font: inherit;
-    font-size: 0.9375rem;
-    color: var(--color-text-muted);
-    background: #f3f4f6;
-    border: 1px solid var(--color-border);
-    border-radius: 0.5rem;
-    opacity: 0.85;
   }
 }
 </style>

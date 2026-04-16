@@ -1,7 +1,9 @@
 <template>
   <main class="home">
     <h1 class="home__title">Filmtrip</h1>
-    <p class="home__lead">Nuxt 3 + Vue 3 + Sass 已就緒。</p>
+    <p class="home__lead">
+      Nuxt 3 + Vue 3 + Sass + Supabase 已就緒。請用右上角登入（Google）。
+    </p>
   </main>
 </template>
 

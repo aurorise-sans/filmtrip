@@ -4,13 +4,9 @@
   box-sizing: border-box;
 }
 
-html {
-  -webkit-text-size-adjust: 100%;
-}
-
-body {
-  margin: 0;
-  font-family:
+:root {
+  /* 字體（頁面與元件透過 var 使用） */
+  --font-sans:
     system-ui,
     -apple-system,
     "Segoe UI",
@@ -18,11 +14,28 @@ body {
     "Helvetica Neue",
     Arial,
     sans-serif;
-  line-height: 1.5;
-  color: #1a1a1a;
-  background-color: #fafafa;
+
+  /* 色彩 */
+  --color-text: #1a1a1a;
+  --color-text-muted: #5c5c5c;
+  --color-bg: #fafafa;
+  --color-surface: #ffffff;
+  --color-border: #e5e7eb;
+  --color-border-strong: #d1d5db;
+  --color-accent: #2563eb;
+  --color-accent-hover: #1d4ed8;
+  --color-danger: #b91c1c;
+  --color-danger-bg: #fef2f2;
 }
 
-:root {
-  --color-text-muted: #5c5c5c;
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  line-height: 1.5;
+  color: var(--color-text);
+  background-color: var(--color-bg);
 }

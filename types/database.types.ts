@@ -12,7 +12,61 @@ export type Json =
 
 export interface Database {
   public: {
-    Tables: Record<string, never>
+    Tables: {
+      trips: {
+        Row: {
+          id: string
+          user_id: string
+          name: string
+          start_date: string
+          end_date: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          name: string
+          start_date: string
+          end_date: string
+          created_at?: string
+        }
+        Update: {
+          name?: string
+          start_date?: string
+          end_date?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      photos: {
+        Row: {
+          id: string
+          trip_id: string
+          user_id: string
+          image_url: string
+          latitude: number
+          longitude: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          trip_id: string
+          user_id: string
+          image_url: string
+          latitude: number
+          longitude: number
+          created_at?: string
+        }
+        Update: {
+          trip_id?: string
+          user_id?: string
+          image_url?: string
+          latitude?: number
+          longitude?: number
+        }
+        Relationships: []
+      }
+    }
     Views: Record<string, never>
     Functions: Record<string, never>
     Enums: Record<string, never>

@@ -4,8 +4,12 @@
       <NuxtLink class="layout-default__brand" to="/">Filmtrip</NuxtLink>
       <nav class="layout-default__nav" aria-label="帳號">
         <template v-if="session">
+          <NuxtLink class="layout-default__link" to="/trips/new">
+            建立旅程
+          </NuxtLink>
+          <NuxtLink class="layout-default__link" to="/profile">個人</NuxtLink>
           <span class="layout-default__email" title="已登入帳號">{{
-            session.user?.email
+            userEmail
           }}</span>
           <button
             type="button"
@@ -27,8 +31,15 @@
 </template>
 
 <script setup lang="ts">
+import type { JwtPayload } from "@supabase/supabase-js"
+
 const session = useSupabaseSession()
+const userClaims = useSupabaseUser()
 const supabase = useSupabaseClient()
+
+const userEmail = computed(
+  () => (userClaims.value as JwtPayload | null)?.email ?? "",
+)
 
 async function signOut() {
   await supabase.auth.signOut()
@@ -80,7 +91,7 @@ async function signOut() {
   }
 
   &__link {
-    color: #2563eb;
+    color: var(--color-accent);
     text-decoration: none;
 
     &:hover {

@@ -5,13 +5,15 @@
 </template>
 
 <script setup lang="ts">
-const session = useSupabaseSession()
+import type { JwtPayload } from "@supabase/supabase-js"
+
+const userClaims = useSupabaseUser()
 const message = ref("正在完成登入…")
 
 watch(
-  session,
-  (s) => {
-    if (s?.user) {
+  userClaims,
+  (claims) => {
+    if ((claims as JwtPayload | null)?.sub) {
       message.value = "登入成功，導向首頁…"
       navigateTo("/")
     }
@@ -21,7 +23,7 @@ watch(
 
 onMounted(() => {
   const t = window.setTimeout(() => {
-    if (!session.value?.user) {
+    if (!(userClaims.value as JwtPayload | null)?.sub) {
       message.value = "無法取得登入狀態，請回到登入頁再試一次。"
     }
   }, 8000)
@@ -39,7 +41,7 @@ onMounted(() => {
 
   &__text {
     margin: 0;
-    color: var(--color-text-muted, #5c5c5c);
+    color: var(--color-text-muted);
     font-size: 1rem;
   }
 }

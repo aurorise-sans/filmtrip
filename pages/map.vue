@@ -155,7 +155,7 @@ onMounted(async () => {
 
   map = new maplibregl.Map({
     container: mapContainerEl.value,
-    style: "https://demotiles.maplibre.org/style.json",
+    style: "https://tiles.openfreemap.org/styles/liberty",
     center: [121.5, 24.25],
     zoom: 6.5,
   })

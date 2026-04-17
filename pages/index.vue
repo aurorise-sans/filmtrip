@@ -126,6 +126,35 @@ const selectedTripDateLabel = computed(() => {
   return `${formatDate(selectedTrip.value.startDate)} - ${formatDate(selectedTrip.value.endDate)}`
 })
 
+const DEFAULT_MAP_CENTER: [number, number] = [121.5, 24.25]
+const DEFAULT_MAP_ZOOM = 6.5
+
+function getInitialMapViewFromGeolocation(): Promise<{
+  center: [number, number]
+  zoom: number
+}> {
+  return new Promise((resolve) => {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      resolve({ center: DEFAULT_MAP_CENTER, zoom: DEFAULT_MAP_ZOOM })
+      return
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { longitude, latitude } = pos.coords
+        if (Number.isFinite(longitude) && Number.isFinite(latitude)) {
+          resolve({ center: [longitude, latitude], zoom: 12 })
+        } else {
+          resolve({ center: DEFAULT_MAP_CENTER, zoom: DEFAULT_MAP_ZOOM })
+        }
+      },
+      () => {
+        resolve({ center: DEFAULT_MAP_CENTER, zoom: DEFAULT_MAP_ZOOM })
+      },
+      { enableHighAccuracy: false, timeout: 10_000, maximumAge: 300_000 }
+    )
+  })
+}
+
 async function waitForMapLibreGl(timeoutMs = 15_000): Promise<MapLibreGlobal> {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
@@ -338,11 +367,13 @@ onMounted(async () => {
     return
   }
 
+  const initialView = await getInitialMapViewFromGeolocation()
+
   map = new maplibregl.Map({
     container: mapContainerEl.value,
     style: "https://tiles.openfreemap.org/styles/liberty",
-    center: [121.5, 24.25],
-    zoom: 6.5,
+    center: initialView.center,
+    zoom: initialView.zoom,
   })
 
   map.addControl(new maplibregl.NavigationControl(), "top-right")

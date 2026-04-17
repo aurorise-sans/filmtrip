@@ -48,4 +48,7 @@ export default defineNuxtConfig({
   nitro: {
     preset: process.env.VERCEL ? "vercel" : "node-server",
   },
+
+  // 未設定全域 CSP / Nitro CORS：瀏覽器直接對 Supabase REST 與 Storage 發送跨域請求，
+  // 是否允許由 Supabase 專案 Dashboard → API → CORS 與 Storage 設定決定（須含本機與正式網域 origin）。
 })

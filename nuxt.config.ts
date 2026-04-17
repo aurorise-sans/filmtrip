@@ -4,6 +4,22 @@ export default defineNuxtConfig({
   devtools: { enabled: true },
   css: ["~/assets/styles/main.scss"],
 
+  app: {
+    head: {
+      link: [
+        {
+          rel: "stylesheet",
+          href: "https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css",
+        },
+      ],
+      script: [
+        {
+          src: "https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js",
+        },
+      ],
+    },
+  },
+
   runtimeConfig: {
     public: {
       mapboxToken: "",

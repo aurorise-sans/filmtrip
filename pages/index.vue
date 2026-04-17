@@ -79,32 +79,60 @@ function buildPopupContent(imageUrl: string, tripName: string) {
   return root
 }
 
+type PhotoRowBase = {
+  id: string
+  trip_id: string
+  image_url: string
+  latitude: number | null
+  longitude: number | null
+}
+
 onMounted(async () => {
   const {
     data: { user },
-    error: authErr,
   } = await supabase.auth.getUser()
+  const userId = user?.id ?? null
 
-  if (authErr || !user) {
-    loading.value = false
-    await navigateTo("/login")
-    return
-  }
-
-  const { data: rows, error: photosErr } = await supabase
+  const { data: publicRows, error: publicErr } = await supabase
     .from("photos")
-    .select("id, trip_id, image_url, latitude, longitude")
-    .eq("user_id", user.id)
+    .select("id, trip_id, image_url, latitude, longitude, trips!inner(is_public)")
+    .eq("trips.is_public", true)
     .not("latitude", "is", null)
     .not("longitude", "is", null)
 
-  if (photosErr) {
-    fetchError.value = photosErr.message
+  if (publicErr) {
+    fetchError.value = publicErr.message
     loading.value = false
     return
   }
 
-  const list = (rows ?? []).filter(
+  let ownRows: PhotoRowBase[] = []
+  if (userId) {
+    const { data: own, error: ownErr } = await supabase
+      .from("photos")
+      .select("id, trip_id, image_url, latitude, longitude")
+      .eq("user_id", userId)
+      .not("latitude", "is", null)
+      .not("longitude", "is", null)
+
+    if (ownErr) {
+      fetchError.value = ownErr.message
+      loading.value = false
+      return
+    }
+    ownRows = (own ?? []) as PhotoRowBase[]
+  }
+
+  const mergedById = new Map<string, PhotoRowBase>()
+  for (const r of publicRows ?? []) {
+    const row = r as PhotoRowBase
+    mergedById.set(row.id, row)
+  }
+  for (const r of ownRows) {
+    mergedById.set(r.id, r)
+  }
+
+  const list = [...mergedById.values()].filter(
     (r): r is typeof r & { latitude: number; longitude: number } =>
       typeof r.latitude === "number" &&
       typeof r.longitude === "number" &&

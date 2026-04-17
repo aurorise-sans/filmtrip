@@ -21,6 +21,7 @@ export interface Database {
           start_date: string
           end_date: string
           is_public: boolean
+          cover_image_url: string | null
           created_at: string
         }
         Insert: {
@@ -30,6 +31,7 @@ export interface Database {
           start_date: string
           end_date: string
           is_public?: boolean
+          cover_image_url?: string | null
           created_at?: string
         }
         Update: {
@@ -38,6 +40,7 @@ export interface Database {
           end_date?: string
           user_id?: string
           is_public?: boolean
+          cover_image_url?: string | null
         }
         Relationships: []
       }

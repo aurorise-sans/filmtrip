@@ -152,7 +152,50 @@
       </div>
 
       <div v-if="createdTripId" class="trip-new__upload-wrap card-like">
-        <h2 class="trip-new__upload-heading">上傳照片</h2>
+        <ClientOnly>
+          <div class="trip-new__cover-block">
+            <h2 class="trip-new__upload-heading">封面照片</h2>
+            <p class="trip-new__cover-hint">
+              選一張代表此旅程的圖片（可選，不需 GPS）。
+            </p>
+            <figure v-if="tripCoverUrl" class="trip-new__cover-figure">
+              <img
+                class="trip-new__cover-img"
+                :src="tripCoverUrl"
+                alt="旅程封面預覽"
+                loading="lazy"
+                decoding="async"
+              />
+            </figure>
+            <input
+              ref="coverFileInputRef"
+              class="trip-new__cover-input"
+              type="file"
+              accept="image/*"
+              tabindex="-1"
+              aria-hidden="true"
+              @change="onCoverFileSelected"
+            />
+            <button
+              type="button"
+              class="trip-new__cover-btn"
+              :disabled="coverUploadPending || !userId"
+              @click="openCoverFilePicker"
+            >
+              {{ coverUploadPending ? "上傳中…" : "上傳封面照片" }}
+            </button>
+            <p
+              v-if="coverUploadError"
+              class="trip-new__cover-error"
+              role="alert"
+            >
+              {{ coverUploadError }}
+            </p>
+          </div>
+        </ClientOnly>
+        <h2 class="trip-new__upload-heading trip-new__upload-heading--photos">
+          上傳照片
+        </h2>
         <TripPhotoUploadPanel :trip-id="createdTripId" @uploaded="onPhotosUploaded" />
 
         <div class="trip-new__uploaded">
@@ -245,6 +288,10 @@ type UploadedPhoto = {
 }
 
 const uploadedPhotos = ref<UploadedPhoto[]>([])
+const tripCoverUrl = ref<string | null>(null)
+const coverFileInputRef = ref<HTMLInputElement | null>(null)
+const coverUploadPending = ref(false)
+const coverUploadError = ref("")
 const isStep1Locked = computed(() => Boolean(createdTripId.value))
 
 const userId = computed(() => {
@@ -316,10 +363,24 @@ async function onStep1Submit() {
   photosError.value = ""
   step.value = 2
   await fetchUploadedPhotos(data.id)
+  await fetchTripCover(data.id)
 
   if (import.meta.client) {
     window.scrollTo({ top: 0, behavior: "smooth" })
   }
+}
+
+async function fetchTripCover(tripId: string) {
+  const { data, error } = await supabase
+    .from("trips")
+    .select("cover_image_url")
+    .eq("id", tripId)
+    .maybeSingle()
+  if (error) {
+    tripCoverUrl.value = null
+    return
+  }
+  tripCoverUrl.value = data?.cover_image_url ?? null
 }
 
 async function fetchUploadedPhotos(tripId: string) {
@@ -345,6 +406,37 @@ async function onPhotosUploaded() {
   const id = createdTripId.value
   if (!id) return
   await fetchUploadedPhotos(id)
+}
+
+function openCoverFilePicker() {
+  coverUploadError.value = ""
+  coverFileInputRef.value?.click()
+}
+
+async function onCoverFileSelected(ev: Event) {
+  const input = ev.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ""
+  const tripId = createdTripId.value
+  const uid = userId.value
+  if (!file || !tripId || !uid) return
+
+  coverUploadPending.value = true
+  coverUploadError.value = ""
+  try {
+    const { publicUrl } = await uploadTripCoverAndUpdateRow(supabase, {
+      userId: uid,
+      tripId,
+      file,
+    })
+    tripCoverUrl.value = publicUrl
+    await refreshNuxtData("profile-trips")
+  } catch (e) {
+    coverUploadError.value =
+      e instanceof Error ? e.message : "上傳失敗，請稍後再試。"
+  } finally {
+    coverUploadPending.value = false
+  }
 }
 
 function extractPhotoObjectPath(imageUrl: string): string | null {
@@ -416,7 +508,7 @@ async function goToTripDetail() {
   }
 }
 
-function goToStep(targetStep: 1 | 2) {
+async function goToStep(targetStep: 1 | 2) {
   if (targetStep === 2 && !createdTripId.value) {
     errorMessage.value = "請先完成旅程資訊並建立旅程。"
     return
@@ -424,6 +516,9 @@ function goToStep(targetStep: 1 | 2) {
   step.value = targetStep
   errorMessage.value = ""
   step2Error.value = ""
+  if (targetStep === 2 && createdTripId.value) {
+    await fetchTripCover(createdTripId.value)
+  }
 }
 
 useHead({
@@ -580,6 +675,79 @@ useHead({
 
   &__upload-wrap {
     margin-bottom: 1.25rem;
+  }
+
+  &__cover-block {
+    margin-bottom: 1.5rem;
+    padding-bottom: 1.25rem;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  &__cover-hint {
+    margin: 0 0 0.75rem;
+    font-size: 0.875rem;
+    line-height: 1.45;
+    color: var(--color-text-muted);
+  }
+
+  &__cover-figure {
+    margin: 0 0 0.75rem;
+    border-radius: 0.75rem;
+    overflow: hidden;
+    border: 1px solid var(--color-border);
+    background: var(--color-border);
+  }
+
+  &__cover-img {
+    display: block;
+    width: 100%;
+    max-height: 14rem;
+    object-fit: cover;
+    vertical-align: middle;
+  }
+
+  &__cover-input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  &__cover-btn {
+    padding: 0.45rem 0.9rem;
+    font: inherit;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #fff;
+    background: var(--color-accent);
+    border: none;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    transition: filter 0.15s ease;
+
+    &:hover:not(:disabled) {
+      filter: brightness(1.05);
+    }
+
+    &:disabled {
+      opacity: 0.65;
+      cursor: not-allowed;
+    }
+  }
+
+  &__cover-error {
+    margin: 0.5rem 0 0;
+    font-size: 0.875rem;
+    color: var(--color-danger);
+  }
+
+  &__upload-heading--photos {
+    margin-top: 0;
   }
 
   &__upload-heading {

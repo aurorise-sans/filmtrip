@@ -47,6 +47,19 @@
           </div>
         </div>
 
+        <figure
+          v-if="pageData.trip.cover_image_url"
+          class="trip-detail__cover"
+        >
+          <img
+            class="trip-detail__cover-img"
+            :src="pageData.trip.cover_image_url"
+            :alt="`「${pageData.trip.name}」封面`"
+            loading="eager"
+            decoding="async"
+          />
+        </figure>
+
         <template v-if="!isEditing">
           <h1 class="trip-detail__title">{{ pageData.trip.name }}</h1>
           <p
@@ -114,6 +127,37 @@
               />
             </div>
           </div>
+          <ClientOnly>
+            <div class="trip-detail__field">
+              <span class="trip-detail__label">封面照片</span>
+              <input
+                ref="coverFileInputRef"
+                class="trip-detail__cover-input"
+                type="file"
+                accept="image/*"
+                tabindex="-1"
+                aria-hidden="true"
+                @change="onCoverFileSelected"
+              />
+              <div class="trip-detail__cover-actions">
+                <button
+                  type="button"
+                  class="trip-detail__btn"
+                  :disabled="coverUploadPending || savePending || deletePending"
+                  @click="openCoverFilePicker"
+                >
+                  {{ coverUploadPending ? "上傳中…" : "上傳封面照片" }}
+                </button>
+              </div>
+              <p
+                v-if="coverUploadError"
+                class="trip-detail__cover-upload-error"
+                role="alert"
+              >
+                {{ coverUploadError }}
+              </p>
+            </div>
+          </ClientOnly>
           <div class="trip-detail__field trip-detail__field--visibility">
             <span
               id="trip-edit-visibility-label"
@@ -233,6 +277,7 @@ type TripDetail = {
   start_date: string
   end_date: string
   is_public: boolean
+  cover_image_url: string | null
 }
 
 type PhotoRow = {
@@ -274,7 +319,7 @@ const { data: pageData, pending, error, refresh } = await useAsyncData(
 
     const { data: trip, error: tripErr } = await supabase
       .from("trips")
-      .select("id, user_id, name, start_date, end_date, is_public")
+      .select("id, user_id, name, start_date, end_date, is_public, cover_image_url")
       .eq("id", tripId.value)
       .maybeSingle()
 
@@ -318,6 +363,9 @@ const savePending = ref(false)
 const deletePending = ref(false)
 const deletingPhotoId = ref<string | null>(null)
 const photoDeleteError = ref("")
+const coverFileInputRef = ref<HTMLInputElement | null>(null)
+const coverUploadPending = ref(false)
+const coverUploadError = ref("")
 
 function dateInputValue(iso: string) {
   const s = iso.trim()
@@ -332,6 +380,7 @@ function startEdit() {
   editEndDate.value = dateInputValue(t.end_date)
   editIsPublic.value = t.is_public
   editError.value = ""
+  coverUploadError.value = ""
   isEditing.value = true
 }
 
@@ -339,6 +388,47 @@ function cancelEdit() {
   isEditing.value = false
   editError.value = ""
   photoDeleteError.value = ""
+  coverUploadError.value = ""
+  if (coverFileInputRef.value) coverFileInputRef.value.value = ""
+}
+
+function openCoverFilePicker() {
+  coverUploadError.value = ""
+  coverFileInputRef.value?.click()
+}
+
+async function onCoverFileSelected(ev: Event) {
+  const input = ev.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ""
+  if (!file || !tripId.value) return
+  if (!userId.value || userId.value !== pageData.value?.trip.user_id) {
+    coverUploadError.value = "請以旅程擁有者身分登入後再上傳。"
+    return
+  }
+
+  coverUploadPending.value = true
+  coverUploadError.value = ""
+  try {
+    const { publicUrl } = await uploadTripCoverAndUpdateRow(supabase, {
+      userId: userId.value,
+      tripId: tripId.value,
+      file,
+    })
+    if (pageData.value) {
+      pageData.value = {
+        ...pageData.value,
+        trip: { ...pageData.value.trip, cover_image_url: publicUrl },
+      }
+    }
+    await refresh()
+    await refreshNuxtData("profile-trips")
+  } catch (e) {
+    coverUploadError.value =
+      e instanceof Error ? e.message : "上傳失敗，請稍後再試。"
+  } finally {
+    coverUploadPending.value = false
+  }
 }
 
 async function saveEdit() {
@@ -394,6 +484,12 @@ async function onDeleteTrip() {
 
   deletePending.value = true
   editError.value = ""
+
+  const ownerId = pageData.value?.trip.user_id
+  if (ownerId) {
+    const coverPath = `covers/${ownerId}/${tripId.value}.jpg`
+    await supabase.storage.from("photos").remove([coverPath])
+  }
 
   const { error: photosErr } = await supabase
     .from("photos")
@@ -705,6 +801,47 @@ function formatDate(isoDate: string) {
     &:hover {
       text-decoration: underline;
     }
+  }
+
+  &__cover {
+    margin: 0 0 1rem;
+    border-radius: 0.75rem;
+    overflow: hidden;
+    border: 1px solid var(--color-border);
+    background: var(--color-surface);
+  }
+
+  &__cover-img {
+    display: block;
+    width: 100%;
+    max-height: 18rem;
+    object-fit: cover;
+    vertical-align: middle;
+  }
+
+  &__cover-input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  &__cover-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  &__cover-upload-error {
+    margin: 0.5rem 0 0;
+    font-size: 0.875rem;
+    color: var(--color-danger);
   }
 
   &__title {

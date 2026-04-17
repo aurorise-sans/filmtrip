@@ -46,6 +46,36 @@
         </div>
       </div>
 
+      <div class="trip-new__field trip-new__field--visibility">
+        <span id="trip-visibility-label" class="trip-new__label">旅程可見性</span>
+        <div
+          class="trip-new__radios"
+          role="radiogroup"
+          aria-labelledby="trip-visibility-label"
+        >
+          <label class="trip-new__radio-label">
+            <input
+              v-model="isPublic"
+              class="trip-new__radio"
+              type="radio"
+              name="is_public"
+              :value="true"
+            />
+            <span>公開（顯示在公開地圖）</span>
+          </label>
+          <label class="trip-new__radio-label">
+            <input
+              v-model="isPublic"
+              class="trip-new__radio"
+              type="radio"
+              name="is_public"
+              :value="false"
+            />
+            <span>隱藏（只有自己看得到）</span>
+          </label>
+        </div>
+      </div>
+
       <p v-if="errorMessage" class="trip-new__error" role="alert">
         {{ errorMessage }}
       </p>
@@ -73,6 +103,8 @@ const userClaims = useSupabaseUser()
 const name = ref("")
 const startDate = ref("")
 const endDate = ref("")
+/** 預設公開：顯示在公開地圖 */
+const isPublic = ref(true)
 const errorMessage = ref("")
 const submitting = ref(false)
 
@@ -113,6 +145,7 @@ async function onSubmit() {
     name: trimmed,
     start_date: startDate.value,
     end_date: endDate.value,
+    is_public: isPublic.value,
   })
 
   submitting.value = false
@@ -180,6 +213,33 @@ async function onSubmit() {
     font-size: 0.875rem;
     font-weight: 500;
     color: var(--color-text);
+  }
+
+  &__radios {
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+  }
+
+  &__radio-label {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    font-size: 0.9375rem;
+    line-height: 1.4;
+    color: var(--color-text);
+    cursor: pointer;
+
+    span {
+      flex: 1;
+    }
+  }
+
+  &__radio {
+    margin-top: 0.2rem;
+    flex-shrink: 0;
+    accent-color: var(--color-accent);
+    cursor: pointer;
   }
 
   &__input {

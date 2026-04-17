@@ -7,6 +7,7 @@
           <NuxtLink class="layout-default__link" to="/trips/new">
             建立旅程
           </NuxtLink>
+          <NuxtLink class="layout-default__link" to="/">地圖</NuxtLink>
           <NuxtLink class="layout-default__link" to="/profile">個人</NuxtLink>
           <span class="layout-default__email" title="已登入帳號">{{
             userEmail

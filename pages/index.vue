@@ -23,6 +23,54 @@
     >
       尚無含座標的照片。請在旅程中上傳含 GPS 或已搜尋地點的照片。
     </p>
+
+    <div
+      v-if="isTripModalOpen"
+      class="map-page__modal-backdrop"
+      role="presentation"
+      @click.self="closeTripModal"
+    >
+      <section
+        class="map-page__modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="trip-modal-title"
+      >
+        <header class="map-page__modal-header">
+          <h2 id="trip-modal-title" class="map-page__modal-title">
+            {{ selectedTrip?.name ?? "未知旅程" }}
+          </h2>
+          <button type="button" class="map-page__modal-close" @click="closeTripModal">
+            關閉
+          </button>
+        </header>
+
+        <p class="map-page__modal-date">
+          旅程日期：{{ selectedTripDateLabel }}
+        </p>
+
+        <div v-if="tripPhotosLoading" class="map-page__modal-state">
+          載入照片中…
+        </div>
+        <p v-else-if="tripPhotosError" class="map-page__modal-error" role="alert">
+          {{ tripPhotosError }}
+        </p>
+        <p v-else-if="!tripPhotos.length" class="map-page__modal-state">
+          這趟旅程尚無照片。
+        </p>
+        <ul v-else class="map-page__photo-grid">
+          <li v-for="photo in tripPhotos" :key="photo.id" class="map-page__photo-grid-item">
+            <img :src="photo.imageUrl" alt="" loading="lazy" decoding="async">
+          </li>
+        </ul>
+
+        <div class="map-page__modal-actions">
+          <button type="button" class="map-page__go-trip-btn" @click="goToTripPage">
+            前往旅程頁
+          </button>
+        </div>
+      </section>
+    </div>
   </div>
 </template>
 
@@ -40,15 +88,43 @@ type PhotoPoint = {
   tripName: string
 }
 
+type TripSummary = {
+  id: string
+  name: string
+  startDate: string
+  endDate: string
+}
+
+type TripPhoto = {
+  id: string
+  imageUrl: string
+}
+
 const supabase = useSupabaseClient()
 
 const mapContainerEl = ref<HTMLElement | null>(null)
 const loading = ref(true)
 const fetchError = ref("")
 const photoPoints = ref<PhotoPoint[]>([])
+const selectedTripId = ref<string | null>(null)
+const tripPhotos = ref<TripPhoto[]>([])
+const tripPhotosLoading = ref(false)
+const tripPhotosError = ref("")
 
 let map: MapLibreMap | null = null
 const markers: MapLibreMarker[] = []
+let tripSummaryById = new Map<string, TripSummary>()
+
+const isTripModalOpen = computed(() => selectedTripId.value !== null)
+const selectedTrip = computed(() => {
+  const id = selectedTripId.value
+  if (!id) return null
+  return tripSummaryById.get(id) ?? null
+})
+const selectedTripDateLabel = computed(() => {
+  if (!selectedTrip.value) return "未知"
+  return `${formatDate(selectedTrip.value.startDate)} - ${formatDate(selectedTrip.value.endDate)}`
+})
 
 async function waitForMapLibreGl(timeoutMs = 15_000): Promise<MapLibreGlobal> {
   const deadline = Date.now() + timeoutMs
@@ -60,7 +136,12 @@ async function waitForMapLibreGl(timeoutMs = 15_000): Promise<MapLibreGlobal> {
   throw new Error("MapLibre GL 未能載入，請檢查網路或 CDN。")
 }
 
-function buildPopupContent(imageUrl: string, tripName: string) {
+function buildPopupContent(
+  imageUrl: string,
+  tripName: string,
+  tripId: string,
+  onViewTrip: (id: string) => void
+) {
   const root = document.createElement("div")
   root.className = "map-page__popup-inner"
 
@@ -75,8 +156,65 @@ function buildPopupContent(imageUrl: string, tripName: string) {
   caption.className = "map-page__popup-trip"
   caption.textContent = tripName
 
-  root.append(img, caption)
+  const action = document.createElement("button")
+  action.type = "button"
+  action.className = "map-page__popup-action"
+  action.textContent = "查看旅程"
+  action.addEventListener("click", () => onViewTrip(tripId))
+
+  root.append(img, caption, action)
   return root
+}
+
+function formatDate(value: string) {
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return value
+  return new Intl.DateTimeFormat("zh-TW", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(d)
+}
+
+function closeTripModal() {
+  selectedTripId.value = null
+  tripPhotos.value = []
+  tripPhotosLoading.value = false
+  tripPhotosError.value = ""
+}
+
+async function openTripModal(tripId: string) {
+  selectedTripId.value = tripId
+  tripPhotos.value = []
+  tripPhotosError.value = ""
+  tripPhotosLoading.value = true
+
+  const { data, error } = await supabase
+    .from("photos")
+    .select("id, image_url")
+    .eq("trip_id", tripId)
+    .order("created_at", { ascending: false })
+
+  if (selectedTripId.value !== tripId) return
+
+  if (error) {
+    tripPhotosError.value = error.message
+    tripPhotosLoading.value = false
+    return
+  }
+
+  tripPhotos.value = (data ?? []).map((row) => ({
+    id: row.id,
+    imageUrl: row.image_url,
+  }))
+  tripPhotosLoading.value = false
+}
+
+async function goToTripPage() {
+  const tripId = selectedTripId.value
+  if (!tripId) return
+  closeTripModal()
+  await navigateTo(`/trips/${tripId}`)
 }
 
 type PhotoRowBase = {
@@ -85,6 +223,13 @@ type PhotoRowBase = {
   image_url: string
   latitude: number | null
   longitude: number | null
+}
+
+type TripRow = {
+  id: string
+  name: string
+  start_date: string
+  end_date: string
 }
 
 onMounted(async () => {
@@ -145,7 +290,7 @@ onMounted(async () => {
   if (tripIds.length) {
     const { data: trips, error: tripsErr } = await supabase
       .from("trips")
-      .select("id, name")
+      .select("id, name, start_date, end_date")
       .in("id", tripIds)
 
     if (tripsErr) {
@@ -153,7 +298,19 @@ onMounted(async () => {
       loading.value = false
       return
     }
-    nameByTrip = new Map((trips ?? []).map((t) => [t.id, t.name]))
+    const tripRows = (trips ?? []) as TripRow[]
+    nameByTrip = new Map(tripRows.map((t) => [t.id, t.name]))
+    tripSummaryById = new Map(
+      tripRows.map((t) => [
+        t.id,
+        {
+          id: t.id,
+          name: t.name,
+          startDate: t.start_date,
+          endDate: t.end_date,
+        },
+      ])
+    )
   }
 
   photoPoints.value = list.map((r) => ({
@@ -201,7 +358,7 @@ onMounted(async () => {
         maxWidth: "240px",
         closeButton: true,
         closeOnClick: true,
-      }).setDOMContent(buildPopupContent(p.imageUrl, p.tripName))
+      }).setDOMContent(buildPopupContent(p.imageUrl, p.tripName, p.tripId, openTripModal))
 
       const marker = new maplibregl.Marker({ color: "#2563eb" })
         .setLngLat([p.lng, p.lat])
@@ -317,6 +474,100 @@ onBeforeUnmount(() => {
   height: 100%;
 }
 
+.map-page__modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(15, 23, 42, 0.55);
+}
+
+.map-page__modal {
+  width: min(760px, 100%);
+  max-height: min(85vh, 920px);
+  overflow: auto;
+  border-radius: 0.75rem;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.28);
+  padding: 1rem;
+}
+
+.map-page__modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.map-page__modal-title {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.map-page__modal-close {
+  border: 1px solid var(--color-border);
+  background: transparent;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  padding: 0.375rem 0.625rem;
+  cursor: pointer;
+}
+
+.map-page__modal-date {
+  margin: 0.75rem 0 1rem;
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+}
+
+.map-page__modal-state {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+}
+
+.map-page__modal-error {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--color-danger);
+}
+
+.map-page__photo-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
+  gap: 0.5rem;
+}
+
+.map-page__photo-grid-item img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  border-radius: 0.5rem;
+  border: 1px solid var(--color-border);
+}
+
+.map-page__modal-actions {
+  margin-top: 1rem;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.map-page__go-trip-btn {
+  border: none;
+  background: var(--color-accent);
+  color: #fff;
+  border-radius: 0.55rem;
+  padding: 0.5rem 0.9rem;
+  cursor: pointer;
+}
+
 /* Popup 內容掛到 body，需非 scoped 區塊 */
 </style>
 
@@ -340,5 +591,16 @@ onBeforeUnmount(() => {
   font-weight: 600;
   color: var(--color-text);
   line-height: 1.35;
+}
+
+.map-page__popup-action {
+  margin-top: 0.5rem;
+  border: none;
+  border-radius: 0.45rem;
+  background: #2563eb;
+  color: #fff;
+  padding: 0.38rem 0.6rem;
+  font-size: 0.75rem;
+  cursor: pointer;
 }
 </style>

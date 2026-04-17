@@ -4,6 +4,12 @@ export default defineNuxtConfig({
   devtools: { enabled: true },
   css: ["~/assets/styles/main.scss"],
 
+  runtimeConfig: {
+    public: {
+      mapboxToken: "",
+    },
+  },
+
   modules: ["@nuxtjs/supabase"],
 
   supabase: {

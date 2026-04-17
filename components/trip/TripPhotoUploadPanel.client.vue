@@ -47,17 +47,48 @@
             </template>
             <template v-else>
               <label class="photo-upload__label" :for="`place-${item.key}`">
-                地點名稱（無 GPS）
+                搜尋地點（無 GPS）
               </label>
-              <input
-                :id="`place-${item.key}`"
-                v-model="item.placeName"
-                class="photo-upload__place-input"
-                type="text"
-                maxlength="200"
-                placeholder="例如：台北車站"
-                autocomplete="off"
-              />
+              <div class="photo-upload__geocode">
+                <input
+                  :id="`place-${item.key}`"
+                  class="photo-upload__place-input"
+                  type="search"
+                  maxlength="200"
+                  placeholder="輸入關鍵字搜尋…"
+                  autocomplete="off"
+                  :value="item.geocodeQuery"
+                  @input="onGeocodeInput(item, ($event.target as HTMLInputElement).value)"
+                />
+                <ul
+                  v-if="shouldShowGeocodeDropdown(item.key)"
+                  class="photo-upload__geocode-list"
+                  role="listbox"
+                >
+                  <li v-if="geocodeLoading[item.key]" class="photo-upload__geocode-item photo-upload__geocode-item--muted">
+                    搜尋中…
+                  </li>
+                  <li
+                    v-for="feature in geocodeResultsForKey(item.key)"
+                    :key="feature.id"
+                    class="photo-upload__geocode-item"
+                  >
+                    <button
+                      type="button"
+                      class="photo-upload__geocode-pick"
+                      @mousedown.prevent="selectGeocodeResult(item, feature)"
+                    >
+                      {{ feature.place_name }}
+                    </button>
+                  </li>
+                </ul>
+              </div>
+              <span
+                v-if="item.lat != null && item.lng != null && item.placeName"
+                class="photo-upload__coords photo-upload__geocode-selected"
+              >
+                {{ item.placeName }} · {{ formatCoord(item.lat) }}，{{ formatCoord(item.lng) }}
+              </span>
             </template>
           </div>
           <button
@@ -104,9 +135,8 @@ const emit = defineEmits<{
   uploaded: []
 }>()
 
+const config = useRuntimeConfig()
 const supabase = useSupabaseClient()
-const user = useSupabaseUser()
-const userId = computed(() => user.value?.id ?? "")
 
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const reading = ref(false)
@@ -122,9 +152,95 @@ type PendingItem = {
   lng: number | null
   hasGps: boolean
   placeName: string
+  /** 無 GPS：搜尋框內容 */
+  geocodeQuery: string
+}
+
+type MapboxGeocodeFeature = {
+  id: string
+  place_name: string
+  center: [number, number]
+}
+
+/** Mapbox 回傳的 feature 可能只有 geometry.coordinates，未必帶 center */
+function normalizeGeocodeFeature(raw: Record<string, unknown>): MapboxGeocodeFeature | null {
+  const idRaw = raw.id
+  const id =
+    typeof idRaw === "string" || typeof idRaw === "number"
+      ? String(idRaw)
+      : `feat-${Math.random().toString(36).slice(2)}`
+
+  let lng: number | undefined
+  let lat: number | undefined
+
+  const c = raw.center
+  if (Array.isArray(c) && c.length >= 2) {
+    const a = Number(c[0])
+    const b = Number(c[1])
+    if (Number.isFinite(a) && Number.isFinite(b)) {
+      lng = a
+      lat = b
+    }
+  }
+
+  if (lng === undefined || lat === undefined) {
+    const geom = raw.geometry as { coordinates?: unknown } | undefined
+    const coords = geom?.coordinates
+    if (Array.isArray(coords) && coords.length >= 2) {
+      const a = Number(coords[0])
+      const b = Number(coords[1])
+      if (Number.isFinite(a) && Number.isFinite(b)) {
+        lng = a
+        lat = b
+      }
+    }
+  }
+
+  if (lng === undefined || lat === undefined) return null
+
+  const placeName =
+    typeof raw.place_name === "string"
+      ? raw.place_name
+      : typeof raw.text === "string"
+        ? raw.text
+        : ""
+
+  if (!placeName.trim()) return null
+
+  return { id, place_name: placeName, center: [lng, lat] }
 }
 
 const pendingItems = ref<PendingItem[]>([])
+
+const geocodeResults = ref<Record<string, MapboxGeocodeFeature[]>>({})
+const geocodeLoading = ref<Record<string, boolean>>({})
+const geocodeDebounceTimers = new Map<string, ReturnType<typeof setTimeout>>()
+
+function geocodeResultsForKey(key: string) {
+  return geocodeResults.value[key] ?? []
+}
+
+function shouldShowGeocodeDropdown(key: string) {
+  if (geocodeLoading.value[key]) return true
+  return (geocodeResults.value[key]?.length ?? 0) > 0
+}
+
+function clearGeocodeTimers() {
+  for (const t of geocodeDebounceTimers.values()) {
+    clearTimeout(t)
+  }
+  geocodeDebounceTimers.clear()
+}
+
+function clearGeocodeStateForKey(key: string) {
+  const pending = geocodeDebounceTimers.get(key)
+  if (pending) clearTimeout(pending)
+  geocodeDebounceTimers.delete(key)
+  const { [key]: _r, ...restResults } = geocodeResults.value
+  const { [key]: _l, ...restLoading } = geocodeLoading.value
+  geocodeResults.value = restResults
+  geocodeLoading.value = restLoading
+}
 
 function openPicker() {
   errorMessage.value = ""
@@ -142,10 +258,14 @@ function revokePreviews() {
 function removeItem(key: string) {
   const item = pendingItems.value.find((i) => i.key === key)
   if (item) URL.revokeObjectURL(item.previewUrl)
+  clearGeocodeStateForKey(key)
   pendingItems.value = pendingItems.value.filter((i) => i.key !== key)
 }
 
 function cancelReview() {
+  clearGeocodeTimers()
+  geocodeResults.value = {}
+  geocodeLoading.value = {}
   revokePreviews()
   noticeMessage.value = ""
   errorMessage.value = ""
@@ -155,8 +275,80 @@ function cancelReview() {
 }
 
 onBeforeUnmount(() => {
+  clearGeocodeTimers()
   revokePreviews()
 })
+
+async function fetchGeocodeResults(key: string, query: string) {
+  const token = config.public.mapboxToken as string
+  if (!token?.trim()) {
+    errorMessage.value = "未設定 Mapbox Token（NUXT_PUBLIC_MAPBOX_TOKEN）。"
+    geocodeResults.value = { ...geocodeResults.value, [key]: [] }
+    geocodeLoading.value = { ...geocodeLoading.value, [key]: false }
+    return
+  }
+
+  const q = query.trim()
+  if (q.length < 2) {
+    geocodeResults.value = { ...geocodeResults.value, [key]: [] }
+    geocodeLoading.value = { ...geocodeLoading.value, [key]: false }
+    return
+  }
+
+  geocodeLoading.value = { ...geocodeLoading.value, [key]: true }
+  errorMessage.value = ""
+
+  try {
+    const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(q)}.json?access_token=${encodeURIComponent(token)}&limit=5`
+    const res = await fetch(url)
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "")
+      throw new Error(errText || `Geocoding 請求失敗（${res.status}）`)
+    }
+    const data = (await res.json()) as { features?: Record<string, unknown>[] }
+    const features: MapboxGeocodeFeature[] = []
+    for (const f of data.features ?? []) {
+      const n = normalizeGeocodeFeature(f)
+      if (n) features.push(n)
+    }
+    geocodeResults.value = { ...geocodeResults.value, [key]: features }
+  } catch (e) {
+    errorMessage.value = e instanceof Error ? e.message : "地點搜尋失敗。"
+    geocodeResults.value = { ...geocodeResults.value, [key]: [] }
+  } finally {
+    geocodeLoading.value = { ...geocodeLoading.value, [key]: false }
+  }
+}
+
+function scheduleGeocodeSearch(key: string, query: string) {
+  const prev = geocodeDebounceTimers.get(key)
+  if (prev) clearTimeout(prev)
+  geocodeDebounceTimers.set(
+    key,
+    setTimeout(() => {
+      geocodeDebounceTimers.delete(key)
+      void fetchGeocodeResults(key, query)
+    }, 400)
+  )
+}
+
+function onGeocodeInput(item: PendingItem, value: string) {
+  item.geocodeQuery = value
+  item.placeName = ""
+  item.lat = null
+  item.lng = null
+  scheduleGeocodeSearch(item.key, value)
+}
+
+function selectGeocodeResult(item: PendingItem, feature: MapboxGeocodeFeature) {
+  const [lng, lat] = feature.center
+  item.placeName = feature.place_name
+  item.lat = lat
+  item.lng = lng
+  item.geocodeQuery = feature.place_name
+  geocodeResults.value = { ...geocodeResults.value, [item.key]: [] }
+  geocodeLoading.value = { ...geocodeLoading.value, [item.key]: false }
+}
 
 async function onFilesSelected(event: Event) {
   const input = event.target as HTMLInputElement
@@ -215,7 +407,7 @@ async function onFilesSelected(event: Event) {
     }
 
     const hasGps = lat !== null && lng !== null
-    next.push({ key, file, previewUrl, lat, lng, hasGps, placeName: "" })
+    next.push({ key, file, previewUrl, lat, lng, hasGps, placeName: "", geocodeQuery: "" })
   }
 
   pendingItems.value = [...pendingItems.value, ...next]
@@ -230,9 +422,26 @@ function formatCoord(n: number) {
 async function submitUpload() {
   errorMessage.value = ""
 
+  const {
+    data: { user: authUser },
+    error: authError,
+  } = await supabase.auth.getUser()
+  const uploadUserId = authUser?.id ?? ""
+  console.log("[TripPhotoUpload] submitUpload userId:", uploadUserId, authError?.message ?? "")
+
+  if (!uploadUserId) {
+    errorMessage.value = "請先登入"
+    return
+  }
+
   for (const item of pendingItems.value) {
-    if (!item.hasGps && !item.placeName.trim()) {
-      errorMessage.value = "請為無 GPS 的照片填寫地點名稱。"
+    if (
+      !item.hasGps &&
+      (item.lat == null ||
+        item.lng == null ||
+        !item.placeName.trim())
+    ) {
+      errorMessage.value = "請為無 GPS 的照片從搜尋結果中選擇地點。"
       return
     }
   }
@@ -255,7 +464,7 @@ async function submitUpload() {
       const match = item.file.name.match(/(\.[^.]+)$/)
       const ext = (match ? match[1] : ".jpg").toLowerCase()
       const safeExt = /^\.(jpe?g|png|gif|webp|heic|heif)$/i.test(ext) ? ext : ".jpg"
-      const objectPath = `${userId.value}/${props.tripId}/${crypto.randomUUID()}${safeExt}`
+      const objectPath = `${uploadUserId}/${props.tripId}/${crypto.randomUUID()}${safeExt}`
 
       const { error: upErr } = await supabase.storage
         .from("photos")
@@ -271,10 +480,10 @@ async function submitUpload() {
 
       inserts.push({
         trip_id: props.tripId,
-        user_id: userId.value,
+        user_id: uploadUserId,
         image_url: pub.publicUrl,
-        latitude: item.hasGps ? item.lat : null,
-        longitude: item.hasGps ? item.lng : null,
+        latitude: item.lat,
+        longitude: item.lng,
         place_name: item.hasGps ? null : item.placeName.trim(),
       })
     }
@@ -366,8 +575,8 @@ async function submitUpload() {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  max-height: min(50vh, 22rem);
-  overflow-y: auto;
+  /* 不可對此層設 overflow: auto，否則會裁切子層絕對定位的 Geocoding 下拉清單 */
+  overflow: visible;
 }
 
 .photo-upload__row {
@@ -429,6 +638,60 @@ async function submitUpload() {
 .photo-upload__label {
   font-weight: 500;
   color: var(--color-text);
+}
+
+.photo-upload__geocode {
+  position: relative;
+  width: 100%;
+}
+
+.photo-upload__geocode-list {
+  position: absolute;
+  z-index: 10;
+  left: 0;
+  right: 0;
+  top: calc(100% + 2px);
+  margin: 0;
+  padding: 0.25rem 0;
+  list-style: none;
+  max-height: 11rem;
+  overflow-y: auto;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 0.375rem;
+  background: var(--color-surface);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.photo-upload__geocode-item {
+  margin: 0;
+
+  &--muted {
+    padding: 0.35rem 0.65rem;
+    font-size: 0.8125rem;
+    color: var(--color-text-muted);
+  }
+}
+
+.photo-upload__geocode-pick {
+  display: block;
+  width: 100%;
+  padding: 0.4rem 0.65rem;
+  font: inherit;
+  font-size: 0.8125rem;
+  text-align: left;
+  color: var(--color-text);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+
+  &:hover {
+    background: rgba(37, 99, 235, 0.08);
+  }
+}
+
+.photo-upload__geocode-selected {
+  display: block;
+  margin-top: 0.15rem;
 }
 
 .photo-upload__place-input {

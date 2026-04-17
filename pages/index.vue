@@ -132,40 +132,23 @@ const DEFAULT_MAP_ZOOM = 6.5
 function getInitialMapViewFromGeolocation(): Promise<{
   center: [number, number]
   zoom: number
-  geolocationSucceeded: boolean
 }> {
   return new Promise((resolve) => {
     if (typeof navigator === "undefined" || !navigator.geolocation) {
-      resolve({
-        center: DEFAULT_MAP_CENTER,
-        zoom: DEFAULT_MAP_ZOOM,
-        geolocationSucceeded: false,
-      })
+      resolve({ center: DEFAULT_MAP_CENTER, zoom: DEFAULT_MAP_ZOOM })
       return
     }
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const { longitude, latitude } = pos.coords
         if (Number.isFinite(longitude) && Number.isFinite(latitude)) {
-          resolve({
-            center: [longitude, latitude],
-            zoom: 12,
-            geolocationSucceeded: true,
-          })
+          resolve({ center: [longitude, latitude], zoom: 12 })
         } else {
-          resolve({
-            center: DEFAULT_MAP_CENTER,
-            zoom: DEFAULT_MAP_ZOOM,
-            geolocationSucceeded: false,
-          })
+          resolve({ center: DEFAULT_MAP_CENTER, zoom: DEFAULT_MAP_ZOOM })
         }
       },
       () => {
-        resolve({
-          center: DEFAULT_MAP_CENTER,
-          zoom: DEFAULT_MAP_ZOOM,
-          geolocationSucceeded: false,
-        })
+        resolve({ center: DEFAULT_MAP_CENTER, zoom: DEFAULT_MAP_ZOOM })
       },
       { enableHighAccuracy: false, timeout: 10_000, maximumAge: 300_000 }
     )
@@ -414,23 +397,6 @@ onMounted(async () => {
         .addTo(map!)
 
       markers.push(marker)
-    }
-
-    if (initialView.geolocationSucceeded) {
-      return
-    }
-
-    if (pts.length === 1) {
-      map.flyTo({ center: [pts[0].lng, pts[0].lat], zoom: 11 })
-      return
-    }
-
-    if (pts.length > 1) {
-      const bounds = new maplibregl.LngLatBounds()
-      for (const p of pts) {
-        bounds.extend([p.lng, p.lat])
-      }
-      map.fitBounds(bounds, { padding: 72, maxZoom: 12, duration: 0 })
     }
   })
 })

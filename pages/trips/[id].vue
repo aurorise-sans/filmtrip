@@ -49,6 +49,12 @@
 
         <template v-if="!isEditing">
           <h1 class="trip-detail__title">{{ pageData.trip.name }}</h1>
+          <p
+            v-if="isOwner"
+            class="trip-detail__visibility"
+          >
+            {{ pageData.trip.is_public ? "🌍 公開" : "🔒 僅自己可見" }}
+          </p>
           <p class="trip-detail__dates">
             <time :datetime="pageData.trip.start_date">{{
               formatDate(pageData.trip.start_date)
@@ -707,6 +713,13 @@ function formatDate(isoDate: string) {
     font-weight: 600;
     letter-spacing: -0.02em;
     color: var(--color-text);
+  }
+
+  &__visibility {
+    margin: -0.25rem 0 0.5rem;
+    font-size: 0.9375rem;
+    line-height: 1.4;
+    color: var(--color-text-muted);
   }
 
   &__dates {

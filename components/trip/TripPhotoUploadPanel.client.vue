@@ -364,7 +364,7 @@ async function fetchGeocodeResults(key: string, query: string) {
       geocodeProximityState.kind === "ok"
         ? `&proximity=${encodeURIComponent(`${geocodeProximityState.lng},${geocodeProximityState.lat}`)}`
         : ""
-    const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(q)}.json?access_token=${encodeURIComponent(token)}&limit=5&types=poi,address,place${proximityParam}`
+    const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(q)}.json?access_token=${encodeURIComponent(token)}&limit=5&types=poi,address,place&language=zh${proximityParam}`
     const res = await fetch(url)
     if (!res.ok) {
       const errText = await res.text().catch(() => "")

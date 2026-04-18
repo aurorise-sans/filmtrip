@@ -120,6 +120,7 @@
 import exifr from "exifr"
 import type { LocalPendingPhotoItem } from "~/types/tripPhotoLocal"
 import { mountReadonlyLocationMap } from "~/utils/maplibreClient"
+import { fetchReverseDisplayName } from "~/utils/reverseGeocode"
 
 const MAX_FILES = 36
 
@@ -159,20 +160,8 @@ async function onPhotoLocationConfirm(lat: number, lng: number) {
   item.lng = lng
 
   if (kind === "pick") {
-    try {
-      const res = await fetch(
-        `/api/geocode/reverse?lat=${encodeURIComponent(String(lat))}&lng=${encodeURIComponent(String(lng))}`,
-      )
-      if (res.ok) {
-        const data = (await res.json()) as { display_name?: string }
-        const name = typeof data.display_name === "string" ? data.display_name.trim() : ""
-        item.placeName = name || coordLabel(lat, lng)
-      } else {
-        item.placeName = coordLabel(lat, lng)
-      }
-    } catch {
-      item.placeName = coordLabel(lat, lng)
-    }
+    const name = await fetchReverseDisplayName(lat, lng)
+    item.placeName = name ?? coordLabel(lat, lng)
   }
 }
 
@@ -325,7 +314,22 @@ function validateLocations(): boolean {
   return true
 }
 
-function getPendingItems(): readonly LocalPendingPhotoItem[] {
+async function getPendingItems(): Promise<readonly LocalPendingPhotoItem[]> {
+  await Promise.all(
+    pendingItems.value.map(async (item) => {
+      if (
+        !item.hasGps ||
+        item.lat == null ||
+        item.lng == null ||
+        !Number.isFinite(item.lat) ||
+        !Number.isFinite(item.lng)
+      ) {
+        return
+      }
+      const name = await fetchReverseDisplayName(item.lat, item.lng)
+      item.placeName = name ?? ""
+    }),
+  )
   return pendingItems.value
 }
 

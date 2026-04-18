@@ -121,6 +121,7 @@
 <script setup lang="ts">
 import exifr from "exifr"
 import { mountReadonlyLocationMap } from "~/utils/maplibreClient"
+import { fetchReverseDisplayName } from "~/utils/reverseGeocode"
 
 const MAX_FILES = 36
 
@@ -389,13 +390,26 @@ async function submitUpload() {
 
       const { data: pub } = supabase.storage.from("photos").getPublicUrl(objectPath)
 
+      let placeName: string | null = null
+      if (
+        item.hasGps &&
+        item.lat != null &&
+        item.lng != null &&
+        Number.isFinite(item.lat) &&
+        Number.isFinite(item.lng)
+      ) {
+        placeName = await fetchReverseDisplayName(item.lat, item.lng)
+      } else {
+        placeName = item.placeName.trim() || null
+      }
+
       inserts.push({
         trip_id: props.tripId,
         user_id: uploadUserId,
         image_url: pub.publicUrl,
         latitude: item.lat,
         longitude: item.lng,
-        place_name: item.hasGps ? null : item.placeName.trim(),
+        place_name: placeName,
       })
     }
 

@@ -247,7 +247,7 @@ let coverPreviewRevoke: (() => void) | null = null
 const coverFileInputRef = ref<HTMLInputElement | null>(null)
 const localPickerRef = ref<{
   validateLocations: () => boolean
-  getPendingItems: () => readonly LocalPendingPhotoItem[]
+  getPendingItems: () => Promise<readonly LocalPendingPhotoItem[]>
   clearError: () => void
 } | null>(null)
 
@@ -354,7 +354,7 @@ async function onComplete() {
     return
   }
 
-  const items = [...picker.getPendingItems()]
+  const items = [...(await picker.getPendingItems())]
   const uid = userId.value
 
   const {
@@ -432,7 +432,7 @@ async function onComplete() {
         image_url: pub.publicUrl,
         latitude: item.lat,
         longitude: item.lng,
-        place_name: item.hasGps ? null : item.placeName.trim(),
+        place_name: item.placeName.trim() || null,
       })
     }
 

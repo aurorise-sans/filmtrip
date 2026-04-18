@@ -306,7 +306,10 @@
             {{ photoDeleteError }}
           </p>
 
-          <div v-if="pageData.photos.length" class="trip-detail__grid">
+          <div
+            v-if="pageData.photos.length"
+            class="trip-detail__grid trip-detail__grid--edit"
+          >
             <figure
               v-for="(photo, photoIndex) in pageData.photos"
               :key="photo.id"
@@ -337,19 +340,18 @@
                   ✕
                 </button>
               </div>
-              <figcaption
-                v-if="photoCaption(photo)"
-                class="trip-detail__caption"
-              >
-                {{ photoCaption(photo) }}
-              </figcaption>
-              <button
-                type="button"
-                class="trip-detail__photo-loc-btn"
-                @click="locationPickerPhoto = photo"
-              >
-                編輯地點
-              </button>
+              <div class="trip-detail__edit-photo-meta">
+                <p class="trip-detail__caption">
+                  {{ photoCaption(photo) }}
+                </p>
+                <button
+                  type="button"
+                  class="trip-detail__photo-loc-btn"
+                  @click="locationPickerPhoto = photo"
+                >
+                  編輯地點
+                </button>
+              </div>
             </figure>
           </div>
 
@@ -393,12 +395,6 @@
                 decoding="async"
               />
             </div>
-            <figcaption
-              v-if="photoCaption(photo)"
-              class="trip-detail__caption"
-            >
-              {{ photoCaption(photo) }}
-            </figcaption>
           </figure>
         </div>
 
@@ -420,6 +416,7 @@
       <PhotoLightbox
         v-if="photoLightboxOpen && photoLightboxUrls.length"
         :photos="photoLightboxUrls"
+        :captions="photoLightboxCaptions"
         :initial-index="photoLightboxInitialIndex"
         @close="photoLightboxOpen = false"
       />
@@ -905,6 +902,12 @@ function photoCaption(photo: PhotoRow) {
   }
   return ""
 }
+
+const photoLightboxCaptions = computed(() => {
+  const photos = pageData.value?.photos
+  if (!photos?.length) return [] as string[]
+  return photos.map((p) => photoCaption(p))
+})
 
 useHead(() => ({
   title: pageData.value?.trip?.name
@@ -1496,6 +1499,71 @@ function formatDate(isoDate: string) {
     &:hover {
       background: rgba(37, 99, 235, 0.06);
       border-color: var(--color-accent);
+    }
+  }
+
+  &__grid--edit {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.65rem;
+    overflow: visible;
+    padding-bottom: 0.25rem;
+
+    .trip-detail__figure {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      min-height: 0;
+      width: 100%;
+      min-width: 0;
+    }
+
+    .trip-detail__thumb-wrap {
+      flex-shrink: 0;
+      align-self: stretch;
+      width: 100%;
+      height: auto;
+      aspect-ratio: 1;
+      overflow: hidden;
+      display: block;
+    }
+
+    .trip-detail__thumb {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      max-width: none;
+      object-fit: cover;
+    }
+
+    .trip-detail__edit-photo-meta {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      flex: 1 1 auto;
+      min-height: 0;
+      height: 100%;
+      width: 100%;
+      box-sizing: border-box;
+      gap: 4px
+    }
+
+    .trip-detail__caption {
+      margin: auto;
+      box-sizing: border-box;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      
+    }
+
+    .trip-detail__photo-loc-btn {
+      flex-shrink: 0;
+      align-self: flex-start;
+      width: 100%;
+      box-sizing: border-box;
     }
   }
 

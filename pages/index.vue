@@ -130,6 +130,7 @@
     <PhotoLightbox
       v-if="tripPhotoLightboxOpen && tripPhotoLightboxUrls.length"
       :photos="tripPhotoLightboxUrls"
+      :captions="tripPhotoLightboxCaptions"
       :initial-index="tripPhotoLightboxInitialIndex"
       @close="tripPhotoLightboxOpen = false"
     />
@@ -177,6 +178,7 @@ const tripPhotoLightboxInitialIndex = ref(0)
 const tripPhotoLightboxUrls = computed(() =>
   tripPhotos.value.map((p) => p.imageUrl),
 )
+const tripPhotoLightboxCaptions: string[] = []
 
 let map: MapLibreMap | null = null
 const markers: MapLibreMarker[] = []

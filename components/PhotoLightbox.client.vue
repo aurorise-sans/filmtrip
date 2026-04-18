@@ -39,23 +39,35 @@
         @touchstart.passive="onTouchStart"
         @touchend.passive="onTouchEnd"
       >
-        <img
-          v-if="currentSrc"
-          class="photo-lightbox__img"
-          :src="currentSrc"
-          alt=""
-          decoding="async"
-        />
+        <div v-if="currentSrc" class="photo-lightbox__frame">
+          <img
+            class="photo-lightbox__img"
+            :class="{ 'photo-lightbox__img--with-caption': currentCaption }"
+            :src="currentSrc"
+            alt=""
+            decoding="async"
+          />
+          <p
+            v-if="currentCaption"
+            class="photo-lightbox__caption"
+          >
+            {{ currentCaption }}
+          </p>
+        </div>
       </div>
     </div>
   </Teleport>
 </template>
 
 <script setup lang="ts">
-const props = defineProps<{
-  photos: string[]
-  initialIndex: number
-}>()
+const props = withDefaults(
+  defineProps<{
+    photos: string[]
+    initialIndex: number
+    captions?: string[]
+  }>(),
+  { captions: () => [] },
+)
 
 const emit = defineEmits<{
   close: []
@@ -78,6 +90,13 @@ watch(
 )
 
 const currentSrc = computed(() => props.photos[currentIndex.value] ?? "")
+
+const currentCaption = computed(() => {
+  const raw = props.captions[currentIndex.value]
+  if (typeof raw !== "string") return ""
+  const t = raw.trim()
+  return t
+})
 
 function prev() {
   if (currentIndex.value > 0) currentIndex.value -= 1
@@ -230,14 +249,39 @@ onUnmounted(() => {
   justify-content: center;
 }
 
+.photo-lightbox__frame {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  max-width: 90vw;
+  max-height: 90vh;
+}
+
 .photo-lightbox__img {
   display: block;
   width: 90vw;
+  max-width: 100%;
   height: auto;
   max-height: 90vh;
   object-fit: contain;
   vertical-align: middle;
   user-select: none;
   -webkit-user-drag: none;
+
+  &--with-caption {
+    max-height: min(82vh, calc(90vh - 3.25rem));
+  }
+}
+
+.photo-lightbox__caption {
+  margin: 0;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 0.5rem 0.75rem 0.625rem;
+  text-align: center;
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  color: #fff;
+  background: rgba(17, 17, 17, 0.88);
 }
 </style>

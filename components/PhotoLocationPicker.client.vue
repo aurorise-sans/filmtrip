@@ -86,7 +86,7 @@ function normalizeNominatimResult(
   index: number,
 ): NominatimGeocodeResult | null {
   const lat = parseFloat(String(raw.lat ?? ""))
-  const lng = parseFloat(String(raw.lon ?? ""))
+  const lng = parseFloat(String((raw.lon ?? raw.lng) ?? ""))
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null
 
   const display_name =
@@ -166,7 +166,7 @@ async function fetchSearch(query: string) {
 
   searchLoading.value = true
   try {
-    const res = await fetch(`/api/geocode?q=${encodeURIComponent(q)}`)
+    const res = await fetch(`/api/places/search?q=${encodeURIComponent(q)}`)
     if (!res.ok) {
       searchResults.value = []
       return

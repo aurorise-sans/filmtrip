@@ -180,6 +180,7 @@ const tripPhotoLightboxUrls = computed(() =>
 
 let map: MapLibreMap | null = null
 const markers: MapLibreMarker[] = []
+let geocodeSearchMarker: MapLibreMarker | null = null
 let tripSummaryById = new Map<string, TripSummary>()
 
 const isTripModalOpen = computed(() => selectedTripId.value !== null)
@@ -195,7 +196,7 @@ const selectedTripDateLabel = computed(() => {
 
 const DEFAULT_MAP_CENTER: [number, number] = [121.5, 24.25]
 const DEFAULT_MAP_ZOOM = 6.5
-const GEOCODE_FLY_ZOOM = 13
+const GEOCODE_FLY_ZOOM = 16
 
 type NominatimGeocodeResult = {
   id: string
@@ -209,7 +210,7 @@ function normalizeNominatimResult(
   index: number,
 ): NominatimGeocodeResult | null {
   const lat = parseFloat(String(raw.lat ?? ""))
-  const lng = parseFloat(String(raw.lon ?? ""))
+  const lng = parseFloat(String((raw.lon ?? raw.lng) ?? ""))
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null
 
   const display_name =
@@ -270,19 +271,28 @@ function onGeocodeEscape() {
   geocodeLoading.value = false
 }
 
+function removeGeocodeSearchMarker() {
+  if (geocodeSearchMarker) {
+    geocodeSearchMarker.remove()
+    geocodeSearchMarker = null
+  }
+}
+
 async function fetchGeocodeSearch(query: string) {
   const q = query.trim()
   if (q.length < 2) {
     geocodeReqId++
     geocodeResults.value = []
     geocodeLoading.value = false
+    removeGeocodeSearchMarker()
     return
   }
 
   const id = ++geocodeReqId
+  removeGeocodeSearchMarker()
   geocodeLoading.value = true
   try {
-    const data = await $fetch<unknown[]>("/api/geocode", {
+    const data = await $fetch<unknown[]>("/api/places/search", {
       query: { q },
     })
     if (id !== geocodeReqId) return
@@ -310,12 +320,24 @@ function selectGeocodeResult(feature: NominatimGeocodeResult) {
   geocodeLoading.value = false
 
   if (!map) return
+  const M = typeof window !== "undefined" && window.maplibregl
+  if (!M) return
+
+  removeGeocodeSearchMarker()
+  geocodeSearchMarker = new M.Marker({ color: "#ef4444" })
+    .setLngLat([feature.lng, feature.lat])
+    .addTo(map)
+
   map.flyTo({
     center: [feature.lng, feature.lat],
     zoom: GEOCODE_FLY_ZOOM,
     essential: true,
   })
 }
+
+watch(geocodeQuery, (v) => {
+  if (!String(v).trim()) removeGeocodeSearchMarker()
+})
 
 function getInitialMapViewFromGeolocation(): Promise<{
   center: [number, number]
@@ -598,6 +620,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   if (geocodeDebounceTimer) clearTimeout(geocodeDebounceTimer)
   if (geocodeBlurTimer) clearTimeout(geocodeBlurTimer)
+  removeGeocodeSearchMarker()
   for (const m of markers) {
     m.remove()
   }

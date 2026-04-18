@@ -1,5 +1,11 @@
 <template>
-  <div class="trip-detail">
+  <div
+    class="trip-detail"
+    :class="{
+      'trip-detail--edit-wide': isEditing && editTab === 2,
+      'trip-detail--edit-narrow': isEditing && editTab === 1,
+    }"
+  >
     <p v-if="pending || (!pageData && !fetchError)" class="trip-detail__hint">載入中…</p>
     <p v-else-if="fetchError" class="trip-detail__error" role="alert">
       {{ fetchError }}
@@ -39,16 +45,16 @@
                 type="button"
                 class="trip-detail__btn trip-detail__btn--primary"
                 :disabled="savePending || deletePending"
-                @click="saveEdit"
+                @click="completeEditing"
               >
-                儲存
+                完成編輯
               </button>
             </template>
           </div>
         </div>
 
         <figure
-          v-if="pageData.trip.cover_image_url"
+          v-if="pageData.trip.cover_image_url && !isEditing"
           class="trip-detail__cover"
         >
           <img
@@ -78,11 +84,51 @@
             }}</time>
           </p>
         </template>
+      </header>
 
+      <!-- 編輯模式：Tab 與內容 -->
+      <div v-if="isEditing" class="trip-detail__edit-shell">
+        <ol class="trip-detail__progress" aria-label="編輯項目" role="tablist">
+          <li
+            class="trip-detail__progress-item"
+            :class="{
+              'trip-detail__progress-item--current': editTab === 1,
+              'trip-detail__progress-item--done': editTab > 1,
+            }"
+          >
+            <button
+              type="button"
+              class="trip-detail__progress-btn"
+              role="tab"
+              :aria-selected="editTab === 1"
+              @click="goToEditTab(1)"
+            >
+              <span class="trip-detail__progress-num" aria-hidden="true">1</span>
+              旅程資訊
+            </button>
+          </li>
+          <li
+            class="trip-detail__progress-item"
+            :class="{ 'trip-detail__progress-item--current': editTab === 2 }"
+          >
+            <button
+              type="button"
+              class="trip-detail__progress-btn"
+              role="tab"
+              :aria-selected="editTab === 2"
+              @click="goToEditTab(2)"
+            >
+              <span class="trip-detail__progress-num" aria-hidden="true">2</span>
+              照片
+            </button>
+          </li>
+        </ol>
+
+        <!-- Tab 1：旅程資訊 -->
         <form
-          v-else
+          v-show="editTab === 1"
           class="trip-detail__edit-form"
-          @submit.prevent="saveEdit"
+          @submit.prevent="saveTripInfo"
         >
           <div class="trip-detail__field">
             <label class="trip-detail__label" for="trip-edit-name"
@@ -127,37 +173,7 @@
               />
             </div>
           </div>
-          <ClientOnly>
-            <div class="trip-detail__field">
-              <span class="trip-detail__label">封面照片</span>
-              <input
-                ref="coverFileInputRef"
-                class="trip-detail__cover-input"
-                type="file"
-                accept="image/*"
-                tabindex="-1"
-                aria-hidden="true"
-                @change="onCoverFileSelected"
-              />
-              <div class="trip-detail__cover-actions">
-                <button
-                  type="button"
-                  class="trip-detail__btn"
-                  :disabled="coverUploadPending || savePending || deletePending"
-                  @click="openCoverFilePicker"
-                >
-                  {{ coverUploadPending ? "上傳中…" : "上傳封面照片" }}
-                </button>
-              </div>
-              <p
-                v-if="coverUploadError"
-                class="trip-detail__cover-upload-error"
-                role="alert"
-              >
-                {{ coverUploadError }}
-              </p>
-            </div>
-          </ClientOnly>
+
           <div class="trip-detail__field trip-detail__field--visibility">
             <span
               id="trip-edit-visibility-label"
@@ -191,13 +207,147 @@
               </label>
             </div>
           </div>
+
+          <ClientOnly>
+            <div class="trip-detail__cover-block">
+              <h2 class="trip-detail__section-heading">封面照片</h2>
+              <p class="trip-detail__cover-hint">
+                變更後請按下方「儲存」一併寫入資料庫與雲端封面。
+              </p>
+              <figure
+                v-if="editCoverDisplayUrl"
+                class="trip-detail__cover-figure"
+              >
+                <img
+                  class="trip-detail__cover-preview-img"
+                  :src="editCoverDisplayUrl"
+                  alt="封面預覽"
+                  loading="lazy"
+                  decoding="async"
+                />
+              </figure>
+              <p
+                v-else-if="coverRemovePending && pageData.trip.cover_image_url"
+                class="trip-detail__cover-removed-note"
+              >
+                將在儲存後移除封面
+              </p>
+              <input
+                ref="coverFileInputRef"
+                class="trip-detail__cover-input"
+                type="file"
+                accept="image/*"
+                tabindex="-1"
+                aria-hidden="true"
+                @change="onEditCoverFileSelected"
+              />
+              <div class="trip-detail__cover-actions">
+                <button
+                  type="button"
+                  class="trip-detail__cover-btn"
+                  :disabled="!userId || savePending || deletePending"
+                  @click="openCoverFilePicker"
+                >
+                  {{
+                    pendingCoverFile
+                      ? "更換封面"
+                      : pageData.trip.cover_image_url && !coverRemovePending
+                        ? "更換封面照片"
+                        : "選擇封面照片"
+                  }}
+                </button>
+                <button
+                  v-if="pendingCoverFile || (pageData.trip.cover_image_url && !coverRemovePending)"
+                  type="button"
+                  class="trip-detail__cover-clear"
+                  :disabled="savePending || deletePending"
+                  @click="clearCoverEditSelection"
+                >
+                  {{ pendingCoverFile ? "取消新封面" : "移除封面" }}
+                </button>
+              </div>
+            </div>
+          </ClientOnly>
+
           <p v-if="editError" class="trip-detail__edit-error" role="alert">
             {{ editError }}
           </p>
-        </form>
-      </header>
 
+          <div class="trip-detail__edit-actions">
+            <button
+              type="submit"
+              class="trip-detail__btn trip-detail__btn--primary"
+              :disabled="savePending || deletePending || !userId"
+            >
+              {{ savePending ? "儲存中…" : "儲存" }}
+            </button>
+          </div>
+        </form>
+
+        <!-- Tab 2：照片 -->
+        <div v-show="editTab === 2" class="trip-detail__edit-tab-photos">
+          <div class="trip-detail__section-head trip-detail__section-head--tab2">
+            <h2 class="trip-detail__section-title">照片</h2>
+            <ClientOnly>
+              <TripPhotoUploadPanel
+                v-if="tripId && userId"
+                :key="`edit-upload-${tripId}:${userId}`"
+                :trip-id="tripId"
+                @uploaded="onPhotosUploaded"
+              />
+            </ClientOnly>
+          </div>
+
+          <p
+            v-if="photoDeleteError"
+            class="trip-detail__photo-delete-error"
+            role="alert"
+          >
+            {{ photoDeleteError }}
+          </p>
+
+          <div v-if="pageData.photos.length" class="trip-detail__grid">
+            <figure
+              v-for="photo in pageData.photos"
+              :key="photo.id"
+              class="trip-detail__figure"
+            >
+              <div class="trip-detail__thumb-wrap">
+                <img
+                  class="trip-detail__thumb"
+                  :src="photo.image_url"
+                  :alt="photoCaption(photo) || '旅程照片'"
+                  loading="lazy"
+                  decoding="async"
+                />
+                <button
+                  type="button"
+                  class="trip-detail__photo-delete"
+                  :disabled="deletingPhotoId === photo.id"
+                  aria-label="刪除此照片"
+                  @click="deletePhoto(photo)"
+                >
+                  ✕
+                </button>
+              </div>
+              <figcaption
+                v-if="photoCaption(photo)"
+                class="trip-detail__caption"
+              >
+                {{ photoCaption(photo) }}
+              </figcaption>
+            </figure>
+          </div>
+
+          <div v-else class="trip-detail__empty">
+            <p class="trip-detail__empty-text">尚無照片，請使用「上傳照片」加入</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- 檢視模式：照片列表 -->
       <section
+        v-else
         class="trip-detail__section"
         aria-labelledby="trip-photos-heading"
       >
@@ -205,27 +355,7 @@
           <h2 id="trip-photos-heading" class="trip-detail__section-title">
             照片
           </h2>
-          <!--
-            僅在客戶端、且 auth.getUser 已取得 userId 後再掛載，避免 hydration / session 未就緒時送 Storage。
-            編輯表單在上一段 header，與此區塊不同一個 <form>，不會攔截上傳按鈕。
-          -->
-          <ClientOnly>
-            <TripPhotoUploadPanel
-              v-if="tripId && userId"
-              :key="`${tripId}:${userId}`"
-              :trip-id="tripId"
-              @uploaded="onPhotosUploaded"
-            />
-          </ClientOnly>
         </div>
-
-        <p
-          v-if="photoDeleteError"
-          class="trip-detail__photo-delete-error"
-          role="alert"
-        >
-          {{ photoDeleteError }}
-        </p>
 
         <div v-if="pageData.photos.length" class="trip-detail__grid">
           <figure
@@ -241,16 +371,6 @@
                 loading="lazy"
                 decoding="async"
               />
-              <button
-                v-if="isEditing"
-                type="button"
-                class="trip-detail__photo-delete"
-                :disabled="deletingPhotoId === photo.id"
-                aria-label="刪除此照片"
-                @click="deletePhoto(photo)"
-              >
-                ✕
-              </button>
             </div>
             <figcaption
               v-if="photoCaption(photo)"
@@ -354,6 +474,7 @@ const isOwner = computed(
 )
 
 const isEditing = ref(false)
+const editTab = ref<1 | 2>(1)
 const editName = ref("")
 const editStartDate = ref("")
 const editEndDate = ref("")
@@ -364,74 +485,131 @@ const deletePending = ref(false)
 const deletingPhotoId = ref<string | null>(null)
 const photoDeleteError = ref("")
 const coverFileInputRef = ref<HTMLInputElement | null>(null)
-const coverUploadPending = ref(false)
-const coverUploadError = ref("")
+const pendingCoverFile = ref<File | null>(null)
+const editCoverPreviewUrl = ref<string | null>(null)
+let editCoverPreviewRevoke: (() => void) | null = null
+const coverRemovePending = ref(false)
+
+const editCoverDisplayUrl = computed(() => {
+  if (!pageData.value) return null
+  if (editCoverPreviewUrl.value) return editCoverPreviewUrl.value
+  if (coverRemovePending.value) return null
+  return pageData.value.trip.cover_image_url
+})
 
 function dateInputValue(iso: string) {
   const s = iso.trim()
   return s.length >= 10 ? s.slice(0, 10) : s
 }
 
+function revokeEditCoverPreview() {
+  if (editCoverPreviewRevoke) {
+    editCoverPreviewRevoke()
+    editCoverPreviewRevoke = null
+  }
+  editCoverPreviewUrl.value = null
+}
+
+onBeforeUnmount(() => {
+  revokeEditCoverPreview()
+})
+
+const tripEditDirty = computed(() => {
+  if (!pageData.value || !isEditing.value) return false
+  const t = pageData.value.trip
+  if (editName.value.trim() !== t.name) return true
+  if (editStartDate.value !== dateInputValue(t.start_date)) return true
+  if (editEndDate.value !== dateInputValue(t.end_date)) return true
+  if (editIsPublic.value !== t.is_public) return true
+  if (pendingCoverFile.value) return true
+  if (coverRemovePending.value && !!t.cover_image_url) return true
+  return false
+})
+
+function goToEditTab(target: 1 | 2) {
+  editTab.value = target
+  if (import.meta.client) {
+    window.scrollTo({ top: 0, behavior: "smooth" })
+  }
+}
+
 function startEdit() {
   if (!pageData.value) return
   const t = pageData.value.trip
+  editTab.value = 1
   editName.value = t.name
   editStartDate.value = dateInputValue(t.start_date)
   editEndDate.value = dateInputValue(t.end_date)
   editIsPublic.value = t.is_public
   editError.value = ""
-  coverUploadError.value = ""
+  photoDeleteError.value = ""
+  pendingCoverFile.value = null
+  coverRemovePending.value = false
+  revokeEditCoverPreview()
+  if (coverFileInputRef.value) coverFileInputRef.value.value = ""
   isEditing.value = true
 }
 
-function cancelEdit() {
-  isEditing.value = false
+function resetEditSession() {
   editError.value = ""
   photoDeleteError.value = ""
-  coverUploadError.value = ""
+  pendingCoverFile.value = null
+  coverRemovePending.value = false
+  revokeEditCoverPreview()
   if (coverFileInputRef.value) coverFileInputRef.value.value = ""
 }
 
+function confirmDiscardTripEditIfNeeded(): boolean {
+  if (!tripEditDirty.value) return true
+  return window.confirm(
+    "旅程資訊有未儲存的變更，確定要離開編輯嗎？",
+  )
+}
+
+function cancelEdit() {
+  if (!confirmDiscardTripEditIfNeeded()) return
+  resetEditSession()
+  isEditing.value = false
+}
+
+function completeEditing() {
+  if (!confirmDiscardTripEditIfNeeded()) return
+  resetEditSession()
+  isEditing.value = false
+}
+
 function openCoverFilePicker() {
-  coverUploadError.value = ""
+  editError.value = ""
   coverFileInputRef.value?.click()
 }
 
-async function onCoverFileSelected(ev: Event) {
+function onEditCoverFileSelected(ev: Event) {
   const input = ev.target as HTMLInputElement
   const file = input.files?.[0]
   input.value = ""
-  if (!file || !tripId.value) return
-  if (!userId.value || userId.value !== pageData.value?.trip.user_id) {
-    coverUploadError.value = "請以旅程擁有者身分登入後再上傳。"
+  if (!file?.type.startsWith("image/")) return
+  revokeEditCoverPreview()
+  pendingCoverFile.value = file
+  coverRemovePending.value = false
+  editError.value = ""
+  const url = URL.createObjectURL(file)
+  editCoverPreviewUrl.value = url
+  editCoverPreviewRevoke = () => URL.revokeObjectURL(url)
+}
+
+function clearCoverEditSelection() {
+  editError.value = ""
+  if (pendingCoverFile.value) {
+    pendingCoverFile.value = null
+    revokeEditCoverPreview()
     return
   }
-
-  coverUploadPending.value = true
-  coverUploadError.value = ""
-  try {
-    const { publicUrl } = await uploadTripCoverAndUpdateRow(supabase, {
-      userId: userId.value,
-      tripId: tripId.value,
-      file,
-    })
-    if (pageData.value) {
-      pageData.value = {
-        ...pageData.value,
-        trip: { ...pageData.value.trip, cover_image_url: publicUrl },
-      }
-    }
-    await refresh()
-    await refreshNuxtData("profile-trips")
-  } catch (e) {
-    coverUploadError.value =
-      e instanceof Error ? e.message : "上傳失敗，請稍後再試。"
-  } finally {
-    coverUploadPending.value = false
+  if (pageData.value?.trip.cover_image_url) {
+    coverRemovePending.value = true
   }
 }
 
-async function saveEdit() {
+async function saveTripInfo() {
   if (!tripId.value || !pageData.value) return
 
   const trimmed = editName.value.trim()
@@ -448,28 +626,66 @@ async function saveEdit() {
     return
   }
 
-  savePending.value = true
-  editError.value = ""
-  const { error: updErr } = await supabase
-    .from("trips")
-    .update({
-      name: trimmed,
-      start_date: editStartDate.value,
-      end_date: editEndDate.value,
-      is_public: editIsPublic.value,
-    })
-    .eq("id", tripId.value)
-
-  savePending.value = false
-
-  if (updErr) {
-    editError.value = updErr.message
+  if (!userId.value || userId.value !== pageData.value.trip.user_id) {
+    editError.value = "請以旅程擁有者身分登入後再儲存。"
     return
   }
 
-  await refresh()
-  await refreshNuxtData("profile-trips")
-  isEditing.value = false
+  savePending.value = true
+  editError.value = ""
+
+  try {
+    const { error: updErr } = await supabase
+      .from("trips")
+      .update({
+        name: trimmed,
+        start_date: editStartDate.value,
+        end_date: editEndDate.value,
+        is_public: editIsPublic.value,
+      })
+      .eq("id", tripId.value)
+
+    if (updErr) throw new Error(updErr.message)
+
+    if (pendingCoverFile.value) {
+      await uploadTripCoverAndUpdateRow(supabase, {
+        userId: userId.value,
+        tripId: tripId.value,
+        file: pendingCoverFile.value,
+      })
+    } else if (
+      coverRemovePending.value &&
+      pageData.value.trip.cover_image_url
+    ) {
+      const coverPath = `covers/${userId.value}/${tripId.value}.jpg`
+      await supabase.storage.from("photos").remove([coverPath])
+      const { error: clearErr } = await supabase
+        .from("trips")
+        .update({ cover_image_url: null })
+        .eq("id", tripId.value)
+      if (clearErr) throw new Error(clearErr.message)
+    }
+
+    pendingCoverFile.value = null
+    coverRemovePending.value = false
+    revokeEditCoverPreview()
+
+    await refresh()
+    await refreshNuxtData("profile-trips")
+
+    if (pageData.value) {
+      const t = pageData.value.trip
+      editName.value = t.name
+      editStartDate.value = dateInputValue(t.start_date)
+      editEndDate.value = dateInputValue(t.end_date)
+      editIsPublic.value = t.is_public
+    }
+  } catch (e) {
+    editError.value =
+      e instanceof Error ? e.message : "儲存失敗，請稍後再試。"
+  } finally {
+    savePending.value = false
+  }
 }
 
 async function onDeleteTrip() {
@@ -618,6 +834,15 @@ function formatDate(isoDate: string) {
   max-width: 56rem;
   margin: 0 auto;
   padding: 2rem 1.25rem 3rem;
+  transition: max-width 0.2s ease;
+
+  &--edit-narrow {
+    max-width: 28rem;
+  }
+
+  &--edit-wide {
+    max-width: 56rem;
+  }
 
   &__hint {
     margin: 0;
@@ -704,6 +929,190 @@ function formatDate(isoDate: string) {
     border: 1px solid var(--color-border);
     border-radius: 0.75rem;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  }
+
+  &__edit-shell {
+    margin-bottom: 2rem;
+  }
+
+  &__progress {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    margin: 0 0 1.5rem;
+    padding: 0;
+    list-style: none;
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+    overflow: hidden;
+    background: var(--color-surface);
+  }
+
+  &__progress-item {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    padding: 0.65rem 0.5rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--color-text-muted);
+    border-right: 1px solid var(--color-border);
+
+    &:last-child {
+      border-right: none;
+    }
+
+    &--current {
+      color: var(--color-text);
+      background: rgba(37, 99, 235, 0.06);
+    }
+
+    &--done {
+      color: var(--color-text);
+    }
+  }
+
+  &__progress-btn {
+    width: 100%;
+    padding: 0;
+    margin: 0;
+    border: none;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    cursor: pointer;
+
+    &:disabled {
+      cursor: not-allowed;
+      opacity: 0.7;
+    }
+  }
+
+  &__progress-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.25rem;
+    height: 1.25rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    border-radius: 999px;
+    background: var(--color-border);
+    color: var(--color-text-muted);
+  }
+
+  &__progress-item--current .trip-detail__progress-num {
+    background: var(--color-accent);
+    color: #fff;
+  }
+
+  &__progress-item--done .trip-detail__progress-num {
+    background: var(--color-accent);
+    color: #fff;
+  }
+
+  &__section-heading {
+    margin: 0 0 0.5rem;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--color-text);
+  }
+
+  &__cover-block {
+    margin-top: 1.25rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--color-border);
+    margin-bottom: 0;
+  }
+
+  &__cover-hint {
+    margin: 0 0 0.75rem;
+    font-size: 0.875rem;
+    line-height: 1.45;
+    color: var(--color-text-muted);
+  }
+
+  &__cover-figure {
+    margin: 0 0 0.75rem;
+    border-radius: 0.75rem;
+    overflow: hidden;
+    border: 1px solid var(--color-border);
+    background: var(--color-border);
+  }
+
+  &__cover-preview-img {
+    display: block;
+    width: 100%;
+    max-height: 14rem;
+    object-fit: cover;
+    vertical-align: middle;
+  }
+
+  &__cover-removed-note {
+    margin: 0 0 0.75rem;
+    font-size: 0.875rem;
+    color: var(--color-text-muted);
+  }
+
+  &__cover-btn {
+    padding: 0.45rem 0.9rem;
+    font: inherit;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #fff;
+    background: var(--color-accent);
+    border: none;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    transition: filter 0.15s ease;
+
+    &:hover:not(:disabled) {
+      filter: brightness(1.05);
+    }
+
+    &:disabled {
+      opacity: 0.65;
+      cursor: not-allowed;
+    }
+  }
+
+  &__cover-clear {
+    padding: 0.45rem 0.75rem;
+    font: inherit;
+    font-size: 0.875rem;
+    color: var(--color-text-muted);
+    background: transparent;
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+    cursor: pointer;
+
+    &:hover {
+      color: var(--color-text);
+      border-color: var(--color-text-muted);
+    }
+  }
+
+  &__edit-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.75rem;
+    margin-top: 0.25rem;
+  }
+
+  &__edit-tab-photos {
+    padding: 0 0 0.5rem;
+  }
+
+  &__section-head--tab2 {
+    margin-bottom: 1rem;
   }
 
   &__field {
@@ -836,12 +1245,6 @@ function formatDate(isoDate: string) {
     flex-wrap: wrap;
     align-items: center;
     gap: 0.5rem;
-  }
-
-  &__cover-upload-error {
-    margin: 0.5rem 0 0;
-    font-size: 0.875rem;
-    color: var(--color-danger);
   }
 
   &__title {

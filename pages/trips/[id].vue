@@ -336,6 +336,13 @@
               >
                 {{ photoCaption(photo) }}
               </figcaption>
+              <button
+                type="button"
+                class="trip-detail__photo-loc-btn"
+                @click="locationPickerPhoto = photo"
+              >
+                編輯地點
+              </button>
             </figure>
           </div>
 
@@ -386,6 +393,17 @@
         </div>
       </section>
     </template>
+
+    <ClientOnly>
+      <PhotoLocationPicker
+        v-if="locationPickerPhoto"
+        title="調整地點"
+        :initial-lat="locationPickerPhoto.latitude"
+        :initial-lng="locationPickerPhoto.longitude"
+        @confirm="savePhotoLocation"
+        @cancel="locationPickerPhoto = null"
+      />
+    </ClientOnly>
   </div>
 </template>
 
@@ -484,6 +502,7 @@ const savePending = ref(false)
 const deletePending = ref(false)
 const deletingPhotoId = ref<string | null>(null)
 const photoDeleteError = ref("")
+const locationPickerPhoto = ref<PhotoRow | null>(null)
 const coverFileInputRef = ref<HTMLInputElement | null>(null)
 const pendingCoverFile = ref<File | null>(null)
 const editCoverPreviewUrl = ref<string | null>(null)
@@ -553,6 +572,7 @@ function startEdit() {
 function resetEditSession() {
   editError.value = ""
   photoDeleteError.value = ""
+  locationPickerPhoto.value = null
   pendingCoverFile.value = null
   coverRemovePending.value = false
   revokeEditCoverPreview()
@@ -757,6 +777,49 @@ async function refreshPhotosList() {
   if (pageData.value && photos) {
     pageData.value = { ...pageData.value, photos: photos as PhotoRow[] }
   }
+}
+
+async function savePhotoLocation(lat: number, lng: number) {
+  const current = locationPickerPhoto.value
+  if (!current) return
+
+  locationPickerPhoto.value = { ...current, latitude: lat, longitude: lng }
+
+  photoDeleteError.value = ""
+
+  let placeName: string
+  try {
+    const res = await fetch(
+      `/api/geocode/reverse?lat=${encodeURIComponent(String(lat))}&lng=${encodeURIComponent(String(lng))}`,
+    )
+    if (res.ok) {
+      const data = (await res.json()) as { display_name?: string }
+      const name =
+        typeof data.display_name === "string" ? data.display_name.trim() : ""
+      placeName = name || `${lat.toFixed(5)}, ${lng.toFixed(5)}`
+    } else {
+      placeName = `${lat.toFixed(5)}, ${lng.toFixed(5)}`
+    }
+  } catch {
+    placeName = `${lat.toFixed(5)}, ${lng.toFixed(5)}`
+  }
+
+  const { error: updateErr } = await supabase
+    .from("photos")
+    .update({
+      latitude: lat,
+      longitude: lng,
+      place_name: placeName,
+    })
+    .eq("id", current.id)
+
+  if (updateErr) {
+    photoDeleteError.value = updateErr.message
+    return
+  }
+
+  await refreshPhotosList()
+  locationPickerPhoto.value = null
 }
 
 async function onPhotosUploaded() {
@@ -1367,6 +1430,28 @@ function formatDate(isoDate: string) {
     line-height: 1.3;
     color: var(--color-text-muted);
     word-break: break-word;
+  }
+
+  &__photo-loc-btn {
+    align-self: flex-start;
+    margin: 0;
+    padding: 0.2rem 0.45rem;
+    font: inherit;
+    font-size: 0.625rem;
+    font-weight: 500;
+    color: var(--color-accent);
+    background: transparent;
+    border: 1px solid rgba(37, 99, 235, 0.35);
+    border-radius: 0.25rem;
+    cursor: pointer;
+    transition:
+      background 0.15s ease,
+      border-color 0.15s ease;
+
+    &:hover {
+      background: rgba(37, 99, 235, 0.06);
+      border-color: var(--color-accent);
+    }
   }
 
   &__empty {

@@ -84,8 +84,13 @@
           <h2 id="trip-modal-title" class="map-page__modal-title">
             {{ selectedTrip?.name ?? "未知旅程" }}
           </h2>
-          <button type="button" class="map-page__modal-close" @click="closeTripModal">
-            關閉
+          <button
+            type="button"
+            class="map-page__modal-close"
+            aria-label="關閉"
+            @click="closeTripModal"
+          >
+            <X :size="20" aria-hidden="true" />
           </button>
         </header>
 
@@ -102,22 +107,61 @@
         <p v-else-if="!tripPhotos.length" class="map-page__modal-state">
           這趟旅程尚無照片。
         </p>
-        <ul v-else class="map-page__photo-grid">
-          <li
-            v-for="(photo, photoIndex) in tripPhotos"
-            :key="photo.id"
-            class="map-page__photo-grid-item"
+        <template v-else>
+          <div
+            class="map-page__photo-view-toggle"
+            role="group"
+            aria-label="照片瀏覽模式"
           >
             <button
               type="button"
-              class="map-page__photo-grid-hit"
-              :aria-label="`檢視第 ${photoIndex + 1} 張照片`"
-              @click="openTripPhotoLightbox(photoIndex)"
+              class="map-page__photo-view-btn"
+              :class="{
+                'map-page__photo-view-btn--active': tripModalPhotoLayout === 'strip',
+              }"
+              aria-label="橫向滑動瀏覽"
+              :aria-pressed="tripModalPhotoLayout === 'strip'"
+              @click="tripModalPhotoLayout = 'strip'"
             >
-              <img :src="photo.imageUrl" alt="" loading="lazy" decoding="async">
+              <GalleryHorizontal :size="16" aria-hidden="true" />
             </button>
-          </li>
-        </ul>
+            <button
+              type="button"
+              class="map-page__photo-view-btn"
+              :class="{
+                'map-page__photo-view-btn--active': tripModalPhotoLayout === 'grid',
+              }"
+              aria-label="方格瀏覽"
+              :aria-pressed="tripModalPhotoLayout === 'grid'"
+              @click="tripModalPhotoLayout = 'grid'"
+            >
+              <LayoutGrid :size="16" aria-hidden="true" />
+            </button>
+          </div>
+          <ul
+            class="map-page__photo-grid"
+            :class="
+              tripModalPhotoLayout === 'grid'
+                ? 'map-page__photo-grid--view-grid'
+                : 'map-page__photo-grid--view-strip'
+            "
+          >
+            <li
+              v-for="(photo, photoIndex) in tripPhotos"
+              :key="photo.id"
+              class="map-page__photo-grid-item"
+            >
+              <button
+                type="button"
+                class="map-page__photo-grid-hit"
+                :aria-label="`檢視第 ${photoIndex + 1} 張照片`"
+                @click="openTripPhotoLightbox(photoIndex)"
+              >
+                <img :src="photo.imageUrl" alt="" loading="lazy" decoding="async">
+              </button>
+            </li>
+          </ul>
+        </template>
 
         <div class="map-page__modal-actions">
           <button type="button" class="map-page__go-trip-btn" @click="goToTripPage">
@@ -138,6 +182,8 @@
 </template>
 
 <script setup lang="ts">
+import { GalleryHorizontal, LayoutGrid, X } from "lucide-vue-next"
+
 definePageMeta({
   ssr: false,
 })
@@ -161,6 +207,7 @@ type TripSummary = {
 type TripPhoto = {
   id: string
   imageUrl: string
+  placeName: string | null
 }
 
 const supabase = useSupabaseClient()
@@ -175,10 +222,14 @@ const tripPhotosLoading = ref(false)
 const tripPhotosError = ref("")
 const tripPhotoLightboxOpen = ref(false)
 const tripPhotoLightboxInitialIndex = ref(0)
+const tripModalPhotoLayout = ref<"grid" | "strip">("strip")
+
 const tripPhotoLightboxUrls = computed(() =>
   tripPhotos.value.map((p) => p.imageUrl),
 )
-const tripPhotoLightboxCaptions: string[] = []
+const tripPhotoLightboxCaptions = computed(() =>
+  tripPhotos.value.map((p) => p.placeName ?? ""),
+)
 
 let map: MapLibreMap | null = null
 const markers: MapLibreMarker[] = []
@@ -381,7 +432,8 @@ function buildPopupContent(
   imageUrl: string,
   tripName: string,
   tripId: string,
-  onViewTrip: (id: string) => void
+  onViewTrip: (id: string) => void,
+  coords: { lat: number; lng: number } | null
 ) {
   const root = document.createElement("div")
   root.className = "map-page__popup-inner"
@@ -397,13 +449,31 @@ function buildPopupContent(
   caption.className = "map-page__popup-trip"
   caption.textContent = tripName
 
+  root.append(img, caption)
+
+  const hasCoords =
+    coords !== null &&
+    Number.isFinite(coords.lat) &&
+    Number.isFinite(coords.lng)
+  if (hasCoords) {
+    const { lat, lng } = coords
+    const mapsAction = document.createElement("button")
+    mapsAction.type = "button"
+    mapsAction.className = "map-page__popup-maps"
+    mapsAction.textContent = "Google Maps"
+    mapsAction.addEventListener("click", () => {
+      window.open(`https://www.google.com/maps?q=${lat},${lng}`, "_blank")
+    })
+    root.appendChild(mapsAction)
+  }
+
   const action = document.createElement("button")
   action.type = "button"
   action.className = "map-page__popup-action"
   action.textContent = "查看旅程"
   action.addEventListener("click", () => onViewTrip(tripId))
 
-  root.append(img, caption, action)
+  root.appendChild(action)
   return root
 }
 
@@ -423,6 +493,7 @@ function closeTripModal() {
   tripPhotosLoading.value = false
   tripPhotosError.value = ""
   tripPhotoLightboxOpen.value = false
+  tripModalPhotoLayout.value = "strip"
 }
 
 function openTripPhotoLightbox(index: number) {
@@ -438,7 +509,7 @@ async function openTripModal(tripId: string) {
 
   const { data, error } = await supabase
     .from("photos")
-    .select("id, image_url")
+    .select("id, image_url, place_name")
     .eq("trip_id", tripId)
     .order("created_at", { ascending: false })
 
@@ -453,6 +524,7 @@ async function openTripModal(tripId: string) {
   tripPhotos.value = (data ?? []).map((row) => ({
     id: row.id,
     imageUrl: row.image_url,
+    placeName: row.place_name,
   }))
   tripPhotosLoading.value = false
 }
@@ -607,7 +679,12 @@ onMounted(async () => {
         maxWidth: "240px",
         closeButton: true,
         closeOnClick: true,
-      }).setDOMContent(buildPopupContent(p.imageUrl, p.tripName, p.tripId, openTripModal))
+      }).setDOMContent(
+        buildPopupContent(p.imageUrl, p.tripName, p.tripId, openTripModal, {
+          lat: p.lat,
+          lng: p.lng,
+        })
+      )
 
       const marker = new maplibregl.Marker({ color: "#2563eb" })
         .setLngLat([p.lng, p.lat])
@@ -827,12 +904,61 @@ onBeforeUnmount(() => {
 }
 
 .map-page__modal-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: 1px solid var(--color-border);
   background: transparent;
   border-radius: 0.5rem;
-  font-size: 0.875rem;
-  padding: 0.375rem 0.625rem;
+  padding: 0.4rem;
   cursor: pointer;
+  color: var(--color-text);
+
+  &:hover,
+  &:focus-visible {
+    background: rgba(15, 23, 42, 0.06);
+  }
+}
+
+.map-page__photo-view-toggle {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0;
+  margin-bottom: 0.65rem;
+  padding: 0.15rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.map-page__photo-view-btn {
+  margin: 0;
+  padding: 0.35rem 0.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  background: transparent;
+  border: none;
+  border-radius: 0.375rem;
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease;
+
+  &:hover {
+    color: var(--color-text);
+  }
+
+  &--active {
+    color: var(--color-text);
+    background: rgba(37, 99, 235, 0.1);
+    box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.25);
+  }
 }
 
 .map-page__modal-date {
@@ -856,19 +982,32 @@ onBeforeUnmount(() => {
 .map-page__photo-grid {
   list-style: none;
   margin: 0;
-  padding: 0;
+  padding: 0 0 0.25rem;
+}
+
+.map-page__photo-grid--view-strip {
   display: flex;
   flex-direction: row;
   flex-wrap: nowrap;
   gap: 0.5rem;
   overflow-x: auto;
   overflow-y: hidden;
-  padding-bottom: 0.25rem;
   -webkit-overflow-scrolling: touch;
 }
 
-.map-page__photo-grid-item {
+.map-page__photo-grid--view-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 0.5rem;
+  overflow: visible;
+}
+
+.map-page__photo-grid--view-strip .map-page__photo-grid-item {
   flex: 0 0 auto;
+}
+
+.map-page__photo-grid--view-grid .map-page__photo-grid-item {
+  min-width: 0;
 }
 
 .map-page__photo-grid-hit {
@@ -877,20 +1016,40 @@ onBeforeUnmount(() => {
   justify-content: center;
   margin: 0;
   padding: 0;
-  height: 140px;
-  background: #000;
+  width: 100%;
   border: 1px solid var(--color-border);
   border-radius: 0.5rem;
   cursor: pointer;
   box-sizing: border-box;
+  overflow: hidden;
 }
 
-.map-page__photo-grid-hit img {
+.map-page__photo-grid--view-strip .map-page__photo-grid-hit {
+  height: 140px;
+  width: auto;
+  background: #000;
+}
+
+.map-page__photo-grid--view-grid .map-page__photo-grid-hit {
+  aspect-ratio: 1;
+  height: auto;
+  background: var(--color-surface);
+}
+
+.map-page__photo-grid--view-strip .map-page__photo-grid-hit img {
   display: block;
   height: 140px;
   width: auto;
   max-width: none;
   object-fit: contain;
+  vertical-align: middle;
+}
+
+.map-page__photo-grid--view-grid .map-page__photo-grid-hit img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
   vertical-align: middle;
 }
 
@@ -932,6 +1091,17 @@ onBeforeUnmount(() => {
   font-weight: 600;
   color: var(--color-text);
   line-height: 1.35;
+}
+
+.map-page__popup-maps {
+  margin-top: 0.5rem;
+  background: transparent;
+  border: 1px solid #2563eb;
+  color: #2563eb;
+  border-radius: 0.45rem;
+  padding: 0.38rem 0.6rem;
+  font-size: 0.75rem;
+  cursor: pointer;
 }
 
 .map-page__popup-action {

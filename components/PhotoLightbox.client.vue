@@ -281,7 +281,7 @@ onUnmounted(() => {
   text-align: center;
   font-size: 0.8125rem;
   line-height: 1.35;
-  color: #fff;
-  background: rgba(17, 17, 17, 0.88);
+  color: var(--color-text);
+  background: #fff;
 }
 </style>

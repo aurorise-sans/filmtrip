@@ -13,6 +13,34 @@ export type Json =
 export interface Database {
   public: {
     Tables: {
+      profiles: {
+        Row: {
+          id: string
+          avatar_url: string | null
+          display_name: string | null
+          city: string | null
+          country: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id: string
+          avatar_url?: string | null
+          display_name?: string | null
+          city?: string | null
+          country?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          avatar_url?: string | null
+          display_name?: string | null
+          city?: string | null
+          country?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       trips: {
         Row: {
           id: string

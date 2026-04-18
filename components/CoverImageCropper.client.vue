@@ -42,27 +42,41 @@
 import { Cropper } from "vue-advanced-cropper"
 import "vue-advanced-cropper/dist/style.css"
 
-defineProps<{
-  imageUrl: string
-}>()
+const props = withDefaults(
+  defineProps<{
+    imageUrl: string
+    /** 寬:高，例如 16/9 封面、1 正方形頭像 */
+    aspectRatio?: number
+  }>(),
+  { aspectRatio: 16 / 9 },
+)
 
 const emit = defineEmits<{
   confirm: [blob: Blob]
   cancel: []
 }>()
 
-const stencilProps = { aspectRatio: 16 / 9 }
+const stencilProps = computed(() => ({ aspectRatio: props.aspectRatio }))
 
-/** 裁切框預設撐滿照片寬度（16:9） */
+/** 依比例盡量撐滿可見影像區域 */
 function defaultCropSize({
   imageSize,
 }: {
   imageSize: { width: number; height: number }
 }) {
-  return {
-    width: imageSize.width,
-    height: imageSize.width / (16 / 9),
+  const ar = props.aspectRatio
+  const iw = imageSize.width
+  const ih = imageSize.height
+  if (iw <= 0 || ih <= 0) {
+    return { width: iw, height: ih }
   }
+  let width = iw
+  let height = width / ar
+  if (height > ih) {
+    height = ih
+    width = height * ar
+  }
+  return { width, height }
 }
 
 const cropperRef = ref<InstanceType<typeof Cropper> | null>(null)

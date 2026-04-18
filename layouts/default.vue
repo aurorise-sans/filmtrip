@@ -32,9 +32,9 @@
         to="/profile"
       >
         <img
-          v-if="avatarUrl"
+          v-if="navAvatarDisplayUrl"
           class="layout-default__appbar-avatar"
-          :src="avatarUrl"
+          :src="navAvatarDisplayUrl"
           alt=""
           width="32"
           height="32"
@@ -52,14 +52,25 @@ import { Home, Plus, User } from "lucide-vue-next"
 const route = useRoute()
 const user = useSupabaseUser()
 
+const { navAvatarDisplayUrl, loadProfileAvatarFromDb } = useNavProfileAvatar()
+
 const homeActive = computed(() => route.path === "/")
 const plusActive = computed(() => route.path === "/trips/new")
 const profileActive = computed(() => route.path.startsWith("/profile"))
 
-const avatarUrl = computed(() => {
-  const meta = user.value?.user_metadata as { avatar_url?: string } | undefined
-  return meta?.avatar_url ?? null
+onMounted(() => {
+  void loadProfileAvatarFromDb()
 })
+
+watch(
+  () => user.value?.id,
+  (id, prev) => {
+    if (id === prev) {
+      return
+    }
+    void loadProfileAvatarFromDb()
+  },
+)
 </script>
 
 <style lang="scss" scoped>

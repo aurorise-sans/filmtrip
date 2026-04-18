@@ -164,6 +164,12 @@
               移除封面
             </button>
           </div>
+          <CoverImageCropper
+            v-if="coverCropperOpen && coverCropSourceUrl"
+            :image-url="coverCropSourceUrl"
+            @confirm="onCoverCropConfirm"
+            @cancel="onCoverCropCancel"
+          />
         </div>
       </ClientOnly>
 
@@ -244,6 +250,10 @@ const coverFile = ref<File | null>(null)
 const coverPreviewUrl = ref<string | null>(null)
 let coverPreviewRevoke: (() => void) | null = null
 
+const coverCropperOpen = ref(false)
+const coverCropSourceUrl = ref<string | null>(null)
+let coverCropSourceRevoke: (() => void) | null = null
+
 const coverFileInputRef = ref<HTMLInputElement | null>(null)
 const localPickerRef = ref<{
   validateLocations: () => boolean
@@ -264,6 +274,15 @@ function revokeCoverPreview() {
   coverPreviewUrl.value = null
 }
 
+function revokeCoverCropSource() {
+  if (coverCropSourceRevoke) {
+    coverCropSourceRevoke()
+    coverCropSourceRevoke = null
+  }
+  coverCropSourceUrl.value = null
+  coverCropperOpen.value = false
+}
+
 function openCoverFilePicker() {
   coverFileInputRef.value?.click()
 }
@@ -273,16 +292,33 @@ function onCoverFileSelected(ev: Event) {
   const file = input.files?.[0]
   input.value = ""
   if (!file?.type.startsWith("image/")) return
-  revokeCoverPreview()
-  coverFile.value = file
+  revokeCoverCropSource()
   const url = URL.createObjectURL(file)
-  coverPreviewUrl.value = url
-  coverPreviewRevoke = () => URL.revokeObjectURL(url)
+  coverCropSourceUrl.value = url
+  coverCropSourceRevoke = () => URL.revokeObjectURL(url)
+  coverCropperOpen.value = true
+}
+
+function onCoverCropConfirm(blob: Blob) {
+  revokeCoverCropSource()
+  revokeCoverPreview()
+  const file = new File([blob], "cover.jpg", {
+    type: blob.type || "image/jpeg",
+  })
+  coverFile.value = file
+  const previewUrl = URL.createObjectURL(file)
+  coverPreviewUrl.value = previewUrl
+  coverPreviewRevoke = () => URL.revokeObjectURL(previewUrl)
+}
+
+function onCoverCropCancel() {
+  revokeCoverCropSource()
 }
 
 function clearCoverSelection() {
   coverFile.value = null
   revokeCoverPreview()
+  revokeCoverCropSource()
 }
 
 function validateStep1Fields(): string | null {
@@ -464,6 +500,7 @@ async function onComplete() {
 
 onBeforeUnmount(() => {
   revokeCoverPreview()
+  revokeCoverCropSource()
 })
 
 useHead({

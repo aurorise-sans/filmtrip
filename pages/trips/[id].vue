@@ -266,6 +266,12 @@
                   {{ pendingCoverFile ? "取消新封面" : "移除封面" }}
                 </button>
               </div>
+              <CoverImageCropper
+                v-if="coverCropperOpen && coverCropSourceUrl"
+                :image-url="coverCropSourceUrl"
+                @confirm="onEditCoverCropConfirm"
+                @cancel="onEditCoverCropCancel"
+              />
             </div>
           </ClientOnly>
 
@@ -578,6 +584,10 @@ const editCoverPreviewUrl = ref<string | null>(null)
 let editCoverPreviewRevoke: (() => void) | null = null
 const coverRemovePending = ref(false)
 
+const coverCropperOpen = ref(false)
+const coverCropSourceUrl = ref<string | null>(null)
+let coverCropSourceRevoke: (() => void) | null = null
+
 const editCoverDisplayUrl = computed(() => {
   if (!pageData.value) return null
   if (editCoverPreviewUrl.value) return editCoverPreviewUrl.value
@@ -598,8 +608,18 @@ function revokeEditCoverPreview() {
   editCoverPreviewUrl.value = null
 }
 
+function revokeCoverCropSource() {
+  if (coverCropSourceRevoke) {
+    coverCropSourceRevoke()
+    coverCropSourceRevoke = null
+  }
+  coverCropSourceUrl.value = null
+  coverCropperOpen.value = false
+}
+
 onBeforeUnmount(() => {
   revokeEditCoverPreview()
+  revokeCoverCropSource()
 })
 
 const tripEditDirty = computed(() => {
@@ -634,6 +654,7 @@ function startEdit() {
   pendingCoverFile.value = null
   coverRemovePending.value = false
   revokeEditCoverPreview()
+  revokeCoverCropSource()
   if (coverFileInputRef.value) coverFileInputRef.value.value = ""
   isEditing.value = true
 }
@@ -645,6 +666,7 @@ function resetEditSession() {
   pendingCoverFile.value = null
   coverRemovePending.value = false
   revokeEditCoverPreview()
+  revokeCoverCropSource()
   if (coverFileInputRef.value) coverFileInputRef.value.value = ""
 }
 
@@ -677,17 +699,39 @@ function onEditCoverFileSelected(ev: Event) {
   const file = input.files?.[0]
   input.value = ""
   if (!file?.type.startsWith("image/")) return
+  revokeCoverCropSource()
+  if (pendingCoverFile.value) {
+    pendingCoverFile.value = null
+    revokeEditCoverPreview()
+  }
+  editError.value = ""
+  const url = URL.createObjectURL(file)
+  coverCropSourceUrl.value = url
+  coverCropSourceRevoke = () => URL.revokeObjectURL(url)
+  coverCropperOpen.value = true
+}
+
+function onEditCoverCropConfirm(blob: Blob) {
+  revokeCoverCropSource()
   revokeEditCoverPreview()
+  const file = new File([blob], "cover.jpg", {
+    type: blob.type || "image/jpeg",
+  })
   pendingCoverFile.value = file
   coverRemovePending.value = false
   editError.value = ""
-  const url = URL.createObjectURL(file)
-  editCoverPreviewUrl.value = url
-  editCoverPreviewRevoke = () => URL.revokeObjectURL(url)
+  const previewUrl = URL.createObjectURL(file)
+  editCoverPreviewUrl.value = previewUrl
+  editCoverPreviewRevoke = () => URL.revokeObjectURL(previewUrl)
+}
+
+function onEditCoverCropCancel() {
+  revokeCoverCropSource()
 }
 
 function clearCoverEditSelection() {
   editError.value = ""
+  revokeCoverCropSource()
   if (pendingCoverFile.value) {
     pendingCoverFile.value = null
     revokeEditCoverPreview()

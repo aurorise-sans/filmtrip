@@ -29,53 +29,67 @@
       </p>
       <ul class="photo-upload__list">
         <li
-          v-for="item in pendingItems"
+          v-for="(item, index) in pendingItems"
           :key="item.key"
           class="photo-upload__row"
         >
-          <img
-            class="photo-upload__thumb"
-            :src="item.previewUrl"
-            alt=""
-          />
-          <div class="photo-upload__meta">
-            <template v-if="item.hasGps && item.lat != null && item.lng != null">
-              <span class="photo-upload__badge">已偵測 GPS</span>
-              <div class="photo-upload__mini-wrap">
-                <div
-                  :key="`mmap-${item.key}-${item.lat}-${item.lng}`"
-                  class="photo-upload__mini-map-host"
-                  :ref="(el) => bindMiniMap(item.key, el as HTMLElement | null, item.lng!, item.lat!)"
-                />
-                <button
-                  type="button"
-                  class="photo-upload__mini-edit"
-                  @click="openLocationPicker(item, 'adjust')"
+          <div
+            class="photo-upload__main"
+            :class="{
+              'photo-upload__main--gps-split':
+                item.hasGps && item.lat != null && item.lng != null,
+            }"
+          >
+            <img
+              class="photo-upload__thumb"
+              :src="item.previewUrl"
+              alt=""
+              @click="previewLightboxIndex = index"
+            />
+            <div class="photo-upload__meta">
+              <template v-if="item.hasGps && item.lat != null && item.lng != null">
+                <div class="photo-upload__mini-wrap">
+                  <div
+                    :key="`mmap-${item.key}-${item.lat}-${item.lng}`"
+                    class="photo-upload__mini-map-host"
+                    :ref="(el) => bindMiniMap(item.key, el as HTMLElement | null, item.lng!, item.lat!)"
+                  />
+                  <button
+                    type="button"
+                    class="photo-upload__mini-edit"
+                    @click="openLocationPicker(item, 'adjust')"
+                  >
+                    調整地點
+                  </button>
+                </div>
+                <p
+                  v-if="item.placeName.trim()"
+                  class="photo-upload__mini-place"
                 >
-                  調整地點
-                </button>
-              </div>
-            </template>
-            <template v-else>
-              <div v-if="item.lat != null && item.lng != null && item.placeName" class="photo-upload__place-row">
-                <span class="photo-upload__place-name">{{ item.placeName }}</span>
+                  {{ item.placeName }}
+                </p>
+              </template>
+              <template v-else>
+                <div v-if="item.lat != null && item.lng != null && item.placeName" class="photo-upload__place-row">
+                  <span class="photo-upload__place-name">{{ item.placeName }}</span>
+                  <button
+                    type="button"
+                    class="photo-upload__place-change"
+                    @click="openLocationPicker(item, 'pick')"
+                  >
+                    更改
+                  </button>
+                </div>
                 <button
+                  v-else
                   type="button"
-                  class="photo-upload__place-change"
+                  class="photo-upload__pick-place"
                   @click="openLocationPicker(item, 'pick')"
                 >
-                  更改
+                  選擇地點
                 </button>
-              </div>
-              <button
-                v-else
-                type="button"
-                class="photo-upload__pick-place"
-                @click="openLocationPicker(item, 'pick')"
-              >
-                選擇地點
-              </button>
-            </template>
+              </template>
+            </div>
           </div>
           <button
             type="button"
@@ -115,6 +129,15 @@
       @confirm="onPhotoLocationConfirm"
       @cancel="locationPickerItemKey = null"
     />
+
+    <ClientOnly>
+      <PhotoLightbox
+        v-if="previewLightboxIndex !== null"
+        :photos="photoLightboxUrls"
+        :initial-index="previewLightboxIndex"
+        @close="previewLightboxIndex = null"
+      />
+    </ClientOnly>
   </div>
 </template>
 
@@ -152,6 +175,11 @@ type PendingItem = {
 }
 
 const pendingItems = ref<PendingItem[]>([])
+
+const previewLightboxIndex = ref<number | null>(null)
+const photoLightboxUrls = computed(() =>
+  pendingItems.value.map((i) => i.previewUrl),
+)
 
 const miniCleanups = new Map<string, () => void>()
 
@@ -234,6 +262,7 @@ function revokePreviews() {
 }
 
 function removeItem(key: string) {
+  previewLightboxIndex.value = null
   const item = pendingItems.value.find((i) => i.key === key)
   if (item) URL.revokeObjectURL(item.previewUrl)
   miniCleanups.get(key)?.()
@@ -245,6 +274,7 @@ function removeItem(key: string) {
 }
 
 function cancelReview() {
+  previewLightboxIndex.value = null
   for (const d of miniCleanups.values()) d()
   miniCleanups.clear()
   locationPickerItemKey.value = null
@@ -322,6 +352,22 @@ async function onFilesSelected(event: Event) {
     next.push({ key, file, previewUrl, lat, lng, hasGps, placeName: "" })
   }
 
+  const gpsItems = next.filter(
+    (item): item is PendingItem & { lat: number; lng: number } =>
+      item.hasGps &&
+      item.lat != null &&
+      item.lng != null &&
+      Number.isFinite(item.lat) &&
+      Number.isFinite(item.lng),
+  )
+
+  await Promise.all(
+    gpsItems.map(async (item) => {
+      const name = await fetchReverseDisplayName(item.lat, item.lng)
+      item.placeName = name ?? ""
+    }),
+  )
+
   pendingItems.value = [...pendingItems.value, ...next]
   reading.value = false
   input.value = ""
@@ -390,18 +436,7 @@ async function submitUpload() {
 
       const { data: pub } = supabase.storage.from("photos").getPublicUrl(objectPath)
 
-      let placeName: string | null = null
-      if (
-        item.hasGps &&
-        item.lat != null &&
-        item.lng != null &&
-        Number.isFinite(item.lat) &&
-        Number.isFinite(item.lng)
-      ) {
-        placeName = await fetchReverseDisplayName(item.lat, item.lng)
-      } else {
-        placeName = item.placeName.trim() || null
-      }
+      const placeName = item.placeName.trim() || null
 
       inserts.push({
         trip_id: props.tripId,
@@ -505,8 +540,34 @@ async function submitUpload() {
 
 .photo-upload__row {
   display: flex;
-  gap: 0.65rem;
+  flex-direction: row;
   align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.photo-upload__main {
+  display: contents;
+}
+
+.photo-upload__main--gps-split {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 0.5rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.photo-upload__main--gps-split > .photo-upload__thumb {
+  width: 50%;
+  flex: 0 0 50%;
+  height: auto;
+  aspect-ratio: 1;
+}
+
+.photo-upload__main--gps-split > .photo-upload__meta {
+  width: 50%;
+  flex: 0 0 50%;
 }
 
 .photo-upload__thumb {
@@ -516,6 +577,7 @@ async function submitUpload() {
   border-radius: 0.25rem;
   flex-shrink: 0;
   background: var(--color-border);
+  cursor: pointer;
 }
 
 .photo-upload__meta {
@@ -543,21 +605,10 @@ async function submitUpload() {
   }
 }
 
-.photo-upload__badge {
-  display: inline-block;
-  width: fit-content;
-  padding: 0.15rem 0.4rem;
-  font-size: 0.75rem;
-  font-weight: 500;
-  color: #065f46;
-  background: #d1fae5;
-  border-radius: 0.25rem;
-}
-
 .photo-upload__mini-wrap {
   position: relative;
   width: 100%;
-  height: 120px;
+  height: 160px;
   border-radius: 0.375rem;
   overflow: hidden;
   border: 1px solid var(--color-border);
@@ -589,6 +640,19 @@ async function submitUpload() {
     background: #fff;
     border-color: var(--color-accent);
   }
+}
+
+.photo-upload__mini-place {
+  margin: 0.25rem 0 0;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: var(--color-text-muted);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  word-break: break-word;
 }
 
 .photo-upload__place-row {

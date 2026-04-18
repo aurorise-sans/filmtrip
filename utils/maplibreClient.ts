@@ -26,23 +26,23 @@ export async function mountReadonlyLocationMap(
     center: [lng, lat],
     zoom: 14,
     interactive: false,
-    attributionControl: true,
+    attributionControl: false,
   })
 
-  const marker = new maplibregl.Marker({ color: "#2563eb" })
-    .setLngLat([lng, lat])
-    .addTo(map)
+  let marker: InstanceType<typeof maplibregl.Marker> | undefined
 
-  if (!map.loaded()) {
-    await new Promise<void>((resolve) => {
-      map.once("load", () => resolve())
+  await new Promise<void>((resolve) => {
+    map.once("idle", () => {
+      marker = new maplibregl.Marker({ color: "#2563eb" })
+        .setLngLat([lng, lat])
+        .addTo(map)
+      map.resize()
+      resolve()
     })
-  }
-
-  map.resize()
+  })
 
   return () => {
-    marker.remove()
+    marker?.remove()
     map.remove()
   }
 }

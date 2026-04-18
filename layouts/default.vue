@@ -2,50 +2,64 @@
   <div class="layout-default">
     <header class="layout-default__header">
       <NuxtLink class="layout-default__brand" to="/">Filmtrip</NuxtLink>
-      <nav class="layout-default__nav" aria-label="帳號">
-        <template v-if="session">
-          <NuxtLink class="layout-default__link" to="/trips/new">
-            建立旅程
-          </NuxtLink>
-          <NuxtLink class="layout-default__link" to="/">地圖</NuxtLink>
-          <NuxtLink class="layout-default__link" to="/profile">個人</NuxtLink>
-          <span class="layout-default__email" title="已登入帳號">{{
-            userEmail
-          }}</span>
-          <button
-            type="button"
-            class="layout-default__btn"
-            @click="signOut"
-          >
-            登出
-          </button>
-        </template>
-        <NuxtLink v-else class="layout-default__link" to="/login">
-          登入
-        </NuxtLink>
-      </nav>
     </header>
     <main class="layout-default__main">
       <slot />
     </main>
+    <nav
+      class="layout-default__appbar"
+      aria-label="主要操作"
+    >
+      <NuxtLink
+        class="layout-default__appbar-btn"
+        :class="{ 'layout-default__appbar-btn--active': homeActive }"
+        to="/"
+      >
+        <Home :size="24" aria-hidden="true" />
+        <span class="layout-default__appbar-sr">首頁</span>
+      </NuxtLink>
+      <NuxtLink
+        class="layout-default__appbar-btn"
+        :class="{ 'layout-default__appbar-btn--active': plusActive }"
+        to="/trips/new"
+      >
+        <Plus :size="24" aria-hidden="true" />
+        <span class="layout-default__appbar-sr">建立旅程</span>
+      </NuxtLink>
+      <NuxtLink
+        class="layout-default__appbar-btn"
+        :class="{ 'layout-default__appbar-btn--active': profileActive }"
+        to="/profile"
+      >
+        <img
+          v-if="avatarUrl"
+          class="layout-default__appbar-avatar"
+          :src="avatarUrl"
+          alt=""
+          width="32"
+          height="32"
+        />
+        <User v-else :size="24" aria-hidden="true" />
+        <span class="layout-default__appbar-sr">個人</span>
+      </NuxtLink>
+    </nav>
   </div>
 </template>
 
 <script setup lang="ts">
-import type { JwtPayload } from "@supabase/supabase-js"
+import { Home, Plus, User } from "lucide-vue-next"
 
-const session = useSupabaseSession()
-const userClaims = useSupabaseUser()
-const supabase = useSupabaseClient()
+const route = useRoute()
+const user = useSupabaseUser()
 
-const userEmail = computed(
-  () => (userClaims.value as JwtPayload | null)?.email ?? "",
-)
+const homeActive = computed(() => route.path === "/")
+const plusActive = computed(() => route.path === "/trips/new")
+const profileActive = computed(() => route.path.startsWith("/profile"))
 
-async function signOut() {
-  await supabase.auth.signOut()
-  await navigateTo("/")
-}
+const avatarUrl = computed(() => {
+  const meta = user.value?.user_metadata as { avatar_url?: string } | undefined
+  return meta?.avatar_url ?? null
+})
 </script>
 
 <style lang="scss" scoped>
@@ -76,47 +90,69 @@ async function signOut() {
     }
   }
 
-  &__nav {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    font-size: 0.9375rem;
-  }
-
-  &__email {
-    max-width: 12rem;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    color: var(--color-text-muted, #5c5c5c);
-  }
-
-  &__link {
-    color: var(--color-accent);
-    text-decoration: none;
-
-    &:hover {
-      text-decoration: underline;
-    }
-  }
-
-  &__btn {
-    cursor: pointer;
-    padding: 0.35rem 0.75rem;
-    font: inherit;
-    font-size: 0.875rem;
-    color: #374151;
-    background: #f3f4f6;
-    border: 1px solid #e5e7eb;
-    border-radius: 0.375rem;
-
-    &:hover {
-      background: #e5e7eb;
-    }
-  }
-
   &__main {
     flex: 1;
+    padding-bottom: 80px;
+  }
+
+  &__appbar {
+    position: fixed;
+    bottom: 8px;
+    left: 8px;
+    right: 8px;
+    z-index: 50;
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    padding: 0.5rem 0.35rem;
+    background: rgba(255, 255, 255, 0.72);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.1);
+  }
+
+  &__appbar-btn {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    padding: 0.35rem 0.5rem;
+    color: var(--color-text-muted);
+    text-decoration: none;
+    border-radius: 12px;
+    transition: color 0.15s ease;
+
+    &:focus-visible {
+      outline: 2px solid var(--color-accent);
+      outline-offset: 2px;
+    }
+
+    &--active {
+      color: var(--color-accent);
+    }
+  }
+
+  &__appbar-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    object-fit: cover;
+    display: block;
+  }
+
+  &__appbar-sr {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
   }
 }
 </style>

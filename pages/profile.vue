@@ -19,35 +19,33 @@
     <Teleport to="body">
       <div
         v-show="settingsOpen"
-        class="profile-settings-layer"
+        id="profile-settings-dialog"
+        class="profile-settings"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="profile-settings-title"
       >
-        <div
-          class="profile-settings__backdrop"
-          aria-hidden="true"
-          @click="settingsOpen = false"
-        />
-        <div
-          id="profile-settings-dialog"
-          class="profile-settings"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="profile-settings-title"
-          @click.stop
-        >
-          <header class="profile-settings__header">
-            <h2 id="profile-settings-title" class="profile-settings__title">
-              設定
-            </h2>
-            <button
-              type="button"
-              class="profile-settings__close"
-              aria-label="關閉"
-              @click="settingsOpen = false"
-            >
-              ×
-            </button>
-          </header>
-          <p class="profile-settings__placeholder">更多設定即將推出</p>
+        <header class="profile-settings__header">
+          <h2 id="profile-settings-title" class="profile-settings__title">
+            設定
+          </h2>
+          <button
+            type="button"
+            class="profile-settings__close"
+            aria-label="關閉"
+            @click="settingsOpen = false"
+          >
+            ×
+          </button>
+        </header>
+        <div class="profile-settings__body">
+          <button
+            type="button"
+            class="profile-settings__signout"
+            @click="signOut"
+          >
+            登出
+          </button>
         </div>
       </div>
     </Teleport>
@@ -133,6 +131,12 @@ const { data: trips, error, pending } = await useAsyncData(
 )
 const tripsList = computed(() => trips.value ?? [])
 const fetchError = computed(() => error.value?.message ?? null)
+
+async function signOut() {
+  await supabase.auth.signOut()
+  settingsOpen.value = false
+  await navigateTo("/")
+}
 
 function formatDate(isoDate: string) {
   const d = new Date(isoDate + "T12:00:00")
@@ -321,45 +325,30 @@ function formatDate(isoDate: string) {
   }
 }
 
-.profile-settings-layer {
+.profile-settings {
   position: fixed;
   inset: 0;
-  z-index: 80;
-  display: grid;
-  place-items: center;
-  padding: 1rem;
-  pointer-events: none;
-
-  > * {
-    pointer-events: auto;
-  }
-}
-
-.profile-settings__backdrop {
-  position: absolute;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.45);
-}
-
-.profile-settings {
-  position: relative;
-  z-index: 1;
-  width: 100%;
-  max-width: 20rem;
-  padding: 1rem 1.15rem 1.15rem;
-  border: 1px solid var(--color-border);
-  border-radius: 0.5rem;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
   background: var(--color-surface);
   color: var(--color-text);
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.18);
 }
 
 .profile-settings__header {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  margin-bottom: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.profile-settings__body {
+  flex: 1;
+  padding: 1rem 1.25rem;
+  min-height: 0;
 }
 
 .profile-settings__title {
@@ -390,10 +379,26 @@ function formatDate(isoDate: string) {
   }
 }
 
-.profile-settings__placeholder {
-  margin: 0;
+.profile-settings__signout {
+  display: block;
+  width: 100%;
+  padding: 0.65rem 0.85rem;
+  font: inherit;
   font-size: 0.9375rem;
-  line-height: 1.45;
-  color: var(--color-text-muted);
+  font-weight: 500;
+  color: var(--color-danger);
+  background: transparent;
+  border: 1px solid var(--color-danger);
+  border-radius: 0.375rem;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--color-danger-bg);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-danger);
+    outline-offset: 2px;
+  }
 }
 </style>

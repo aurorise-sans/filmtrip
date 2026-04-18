@@ -188,6 +188,11 @@ definePageMeta({
   ssr: false,
 })
 
+/** 僅地圖頁鎖住 body 捲動 */
+onMounted(() => {
+  document.body.style.overflow = "hidden"
+})
+
 type PhotoPoint = {
   id: string
   tripId: string
@@ -664,6 +669,7 @@ onMounted(async () => {
     style: "https://tiles.openfreemap.org/styles/liberty",
     center: initialView.center,
     zoom: initialView.zoom,
+    attributionControl: false,
   })
 
   map.addControl(new maplibregl.NavigationControl(), "top-right")
@@ -697,6 +703,7 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  document.body.style.overflow = ""
   if (geocodeDebounceTimer) clearTimeout(geocodeDebounceTimer)
   if (geocodeBlurTimer) clearTimeout(geocodeBlurTimer)
   removeGeocodeSearchMarker()
@@ -713,8 +720,11 @@ onBeforeUnmount(() => {
 .map-page {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
-  height: 100vh;
+  box-sizing: border-box;
+  /* 約等於 100dvh 減去 default layout 頂部導覽列（還原全域鎖捲動後避免與 header 疊加高度） */
+  height: calc(100dvh - 3.25rem);
+  max-height: calc(100dvh - 3.25rem);
+  overflow: hidden;
   background: var(--color-bg);
 }
 
@@ -1072,6 +1082,10 @@ onBeforeUnmount(() => {
 </style>
 
 <style lang="scss">
+.maplibregl-popup {
+  z-index: 10;
+}
+
 .map-page__popup-inner {
   padding: 0.25rem;
 }

@@ -59,8 +59,19 @@
           這趟旅程尚無照片。
         </p>
         <ul v-else class="map-page__photo-grid">
-          <li v-for="photo in tripPhotos" :key="photo.id" class="map-page__photo-grid-item">
-            <img :src="photo.imageUrl" alt="" loading="lazy" decoding="async">
+          <li
+            v-for="(photo, photoIndex) in tripPhotos"
+            :key="photo.id"
+            class="map-page__photo-grid-item"
+          >
+            <button
+              type="button"
+              class="map-page__photo-grid-hit"
+              :aria-label="`檢視第 ${photoIndex + 1} 張照片`"
+              @click="openTripPhotoLightbox(photoIndex)"
+            >
+              <img :src="photo.imageUrl" alt="" loading="lazy" decoding="async">
+            </button>
           </li>
         </ul>
 
@@ -71,6 +82,13 @@
         </div>
       </section>
     </div>
+
+    <PhotoLightbox
+      v-if="tripPhotoLightboxOpen && tripPhotoLightboxUrls.length"
+      :photos="tripPhotoLightboxUrls"
+      :initial-index="tripPhotoLightboxInitialIndex"
+      @close="tripPhotoLightboxOpen = false"
+    />
   </div>
 </template>
 
@@ -110,6 +128,11 @@ const selectedTripId = ref<string | null>(null)
 const tripPhotos = ref<TripPhoto[]>([])
 const tripPhotosLoading = ref(false)
 const tripPhotosError = ref("")
+const tripPhotoLightboxOpen = ref(false)
+const tripPhotoLightboxInitialIndex = ref(0)
+const tripPhotoLightboxUrls = computed(() =>
+  tripPhotos.value.map((p) => p.imageUrl),
+)
 
 let map: MapLibreMap | null = null
 const markers: MapLibreMarker[] = []
@@ -210,6 +233,12 @@ function closeTripModal() {
   tripPhotos.value = []
   tripPhotosLoading.value = false
   tripPhotosError.value = ""
+  tripPhotoLightboxOpen.value = false
+}
+
+function openTripPhotoLightbox(index: number) {
+  tripPhotoLightboxInitialIndex.value = index
+  tripPhotoLightboxOpen.value = true
 }
 
 async function openTripModal(tripId: string) {
@@ -557,18 +586,41 @@ onBeforeUnmount(() => {
   list-style: none;
   margin: 0;
   padding: 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
   gap: 0.5rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 0.25rem;
+  -webkit-overflow-scrolling: touch;
 }
 
-.map-page__photo-grid-item img {
-  display: block;
-  width: 100%;
-  aspect-ratio: 1 / 1;
-  object-fit: cover;
-  border-radius: 0.5rem;
+.map-page__photo-grid-item {
+  flex: 0 0 auto;
+}
+
+.map-page__photo-grid-hit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+  height: 140px;
+  background: #000;
   border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+.map-page__photo-grid-hit img {
+  display: block;
+  height: 140px;
+  width: auto;
+  max-width: none;
+  object-fit: contain;
+  vertical-align: middle;
 }
 
 .map-page__modal-actions {

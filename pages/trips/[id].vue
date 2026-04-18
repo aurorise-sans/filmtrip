@@ -308,11 +308,18 @@
 
           <div v-if="pageData.photos.length" class="trip-detail__grid">
             <figure
-              v-for="photo in pageData.photos"
+              v-for="(photo, photoIndex) in pageData.photos"
               :key="photo.id"
               class="trip-detail__figure"
             >
-              <div class="trip-detail__thumb-wrap">
+              <div
+                class="trip-detail__thumb-wrap"
+                role="button"
+                tabindex="0"
+                @click="openPhotoLightbox(photoIndex)"
+                @keydown.enter.prevent="openPhotoLightbox(photoIndex)"
+                @keydown.space.prevent="openPhotoLightbox(photoIndex)"
+              >
                 <img
                   class="trip-detail__thumb"
                   :src="photo.image_url"
@@ -325,7 +332,7 @@
                   class="trip-detail__photo-delete"
                   :disabled="deletingPhotoId === photo.id"
                   aria-label="刪除此照片"
-                  @click="deletePhoto(photo)"
+                  @click.stop="deletePhoto(photo)"
                 >
                   ✕
                 </button>
@@ -366,11 +373,18 @@
 
         <div v-if="pageData.photos.length" class="trip-detail__grid">
           <figure
-            v-for="photo in pageData.photos"
+            v-for="(photo, photoIndex) in pageData.photos"
             :key="photo.id"
             class="trip-detail__figure"
           >
-            <div class="trip-detail__thumb-wrap">
+            <div
+              class="trip-detail__thumb-wrap"
+              role="button"
+              tabindex="0"
+              @click="openPhotoLightbox(photoIndex)"
+              @keydown.enter.prevent="openPhotoLightbox(photoIndex)"
+              @keydown.space.prevent="openPhotoLightbox(photoIndex)"
+            >
               <img
                 class="trip-detail__thumb"
                 :src="photo.image_url"
@@ -402,6 +416,12 @@
         :initial-lng="locationPickerPhoto.longitude"
         @confirm="savePhotoLocation"
         @cancel="locationPickerPhoto = null"
+      />
+      <PhotoLightbox
+        v-if="photoLightboxOpen && photoLightboxUrls.length"
+        :photos="photoLightboxUrls"
+        :initial-index="photoLightboxInitialIndex"
+        @close="photoLightboxOpen = false"
       />
     </ClientOnly>
   </div>
@@ -503,6 +523,17 @@ const deletePending = ref(false)
 const deletingPhotoId = ref<string | null>(null)
 const photoDeleteError = ref("")
 const locationPickerPhoto = ref<PhotoRow | null>(null)
+const photoLightboxOpen = ref(false)
+const photoLightboxInitialIndex = ref(0)
+const photoLightboxUrls = computed(
+  () => pageData.value?.photos.map((p) => p.image_url) ?? [],
+)
+
+function openPhotoLightbox(index: number) {
+  photoLightboxInitialIndex.value = index
+  photoLightboxOpen.value = true
+}
+
 const coverFileInputRef = ref<HTMLInputElement | null>(null)
 const pendingCoverFile = ref<File | null>(null)
 const editCoverPreviewUrl = ref<string | null>(null)
@@ -1366,9 +1397,14 @@ function formatDate(isoDate: string) {
   }
 
   &__grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr));
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
     gap: 0.65rem;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: 0.25rem;
+    -webkit-overflow-scrolling: touch;
   }
 
   &__figure {
@@ -1376,23 +1412,32 @@ function formatDate(isoDate: string) {
     display: flex;
     flex-direction: column;
     gap: 0.25rem;
+    flex: 0 0 auto;
     min-width: 0;
   }
 
   &__thumb-wrap {
     position: relative;
-    width: 100%;
+    flex-shrink: 0;
+    align-self: flex-start;
+    width: auto;
+    height: 180px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #000;
+    border-radius: 0.375rem;
+    border: 1px solid var(--color-border);
+    cursor: pointer;
   }
 
   &__thumb {
-    aspect-ratio: 1;
-    width: 100%;
-    border-radius: 0.375rem;
-    overflow: hidden;
-    background: var(--color-border);
-    border: 1px solid var(--color-border);
-    object-fit: cover;
     display: block;
+    height: 180px;
+    width: auto;
+    max-width: none;
+    object-fit: contain;
+    vertical-align: middle;
   }
 
   &__photo-delete {

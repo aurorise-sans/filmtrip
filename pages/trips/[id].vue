@@ -371,9 +371,47 @@
           <h2 id="trip-photos-heading" class="trip-detail__section-title">
             照片
           </h2>
+          <div
+            class="trip-detail__photo-view-toggle"
+            role="group"
+            aria-label="照片瀏覽模式"
+          >
+            <button
+              type="button"
+              class="trip-detail__photo-view-btn"
+              :class="{
+                'trip-detail__photo-view-btn--active': photoViewMode === 'grid',
+              }"
+              aria-label="方格瀏覽"
+              :aria-pressed="photoViewMode === 'grid'"
+              @click="photoViewMode = 'grid'"
+            >
+              <LayoutGrid :size="16" aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              class="trip-detail__photo-view-btn"
+              :class="{
+                'trip-detail__photo-view-btn--active': photoViewMode === 'strip',
+              }"
+              aria-label="橫向滑動瀏覽"
+              :aria-pressed="photoViewMode === 'strip'"
+              @click="photoViewMode = 'strip'"
+            >
+              <GalleryHorizontal :size="16" aria-hidden="true" />
+            </button>
+          </div>
         </div>
 
-        <div v-if="pageData.photos.length" class="trip-detail__grid">
+        <div
+          v-if="pageData.photos.length"
+          class="trip-detail__grid"
+          :class="
+            photoViewMode === 'grid'
+              ? 'trip-detail__grid--view-grid'
+              : 'trip-detail__grid--view-strip'
+          "
+        >
           <figure
             v-for="(photo, photoIndex) in pageData.photos"
             :key="photo.id"
@@ -425,6 +463,8 @@
 </template>
 
 <script setup lang="ts">
+import { LayoutGrid, GalleryHorizontal } from "lucide-vue-next"
+
 type TripDetail = {
   id: string
   user_id: string
@@ -519,6 +559,7 @@ const savePending = ref(false)
 const deletePending = ref(false)
 const deletingPhotoId = ref<string | null>(null)
 const photoDeleteError = ref("")
+const photoViewMode = ref<"grid" | "strip">("grid")
 const locationPickerPhoto = ref<PhotoRow | null>(null)
 const photoLightboxOpen = ref(false)
 const photoLightboxInitialIndex = ref(0)
@@ -1400,14 +1441,64 @@ function formatDate(isoDate: string) {
   }
 
   &__grid {
+    padding-bottom: 0.25rem;
+  }
+
+  &__photo-view-toggle {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 0;
+    padding: 0.15rem;
+    border-radius: 0.5rem;
+    border: 1px solid var(--color-border);
+    background: var(--color-surface);
+  }
+
+  &__photo-view-btn {
+    margin: 0;
+    padding: 0.35rem 0.5rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font: inherit;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--color-text-muted);
+    background: transparent;
+    border: none;
+    border-radius: 0.375rem;
+    cursor: pointer;
+    transition:
+      color 0.15s ease,
+      background 0.15s ease;
+
+    &:hover {
+      color: var(--color-text);
+    }
+
+    &--active {
+      color: var(--color-text);
+      background: rgba(37, 99, 235, 0.1);
+      box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.25);
+    }
+  }
+
+  &__grid--view-strip {
     display: flex;
     flex-direction: row;
     flex-wrap: nowrap;
     gap: 0.65rem;
     overflow-x: auto;
     overflow-y: hidden;
-    padding-bottom: 0.25rem;
     -webkit-overflow-scrolling: touch;
+  }
+
+  &__grid--view-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr));
+    gap: 0.65rem;
+    overflow: visible;
   }
 
   &__figure {
@@ -1415,32 +1506,65 @@ function formatDate(isoDate: string) {
     display: flex;
     flex-direction: column;
     gap: 0.25rem;
-    flex: 0 0 auto;
     min-width: 0;
+  }
+
+  &__grid--view-strip .trip-detail__figure {
+    flex: 0 0 auto;
+  }
+
+  &__grid--view-grid .trip-detail__figure {
+    width: 100%;
   }
 
   &__thumb-wrap {
     position: relative;
     flex-shrink: 0;
-    align-self: flex-start;
-    width: auto;
-    height: 180px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: #000;
     border-radius: 0.375rem;
     border: 1px solid var(--color-border);
     cursor: pointer;
   }
 
-  &__thumb {
+  &__grid--view-strip .trip-detail__thumb-wrap {
+    align-self: flex-start;
+    width: auto;
+    height: 220px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #000;
+  }
+
+  &__grid--view-grid .trip-detail__thumb-wrap {
+    align-self: stretch;
+    width: 100%;
+    height: auto;
+    aspect-ratio: 1;
+    overflow: hidden;
     display: block;
-    height: 180px;
+    background: var(--color-border);
+  }
+
+  &__thumb {
+    vertical-align: middle;
+  }
+
+  &__grid--view-strip .trip-detail__thumb {
+    display: block;
+    height: 220px;
     width: auto;
     max-width: none;
     object-fit: contain;
-    vertical-align: middle;
+  }
+
+  &__grid--view-grid .trip-detail__thumb {
+    position: absolute;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+    max-width: none;
+    object-fit: cover;
   }
 
   &__photo-delete {

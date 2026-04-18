@@ -2,6 +2,18 @@
   <div class="layout-default">
     <header class="layout-default__header">
       <NuxtLink class="layout-default__brand" to="/">Filmtrip</NuxtLink>
+      <button
+        v-if="isProfilePage"
+        type="button"
+        class="layout-default__header-settings"
+        aria-label="設定"
+        aria-haspopup="dialog"
+        :aria-expanded="profileSettingsOpen"
+        aria-controls="profile-settings-dialog"
+        @click="profileSettingsOpen = true"
+      >
+        <Settings :size="22" aria-hidden="true" />
+      </button>
     </header>
     <main class="layout-default__main">
       <slot />
@@ -55,10 +67,13 @@
 </template>
 
 <script setup lang="ts">
-import { Home, Map, Plus, User } from "lucide-vue-next"
+import { Home, Map, Plus, Settings, User } from "lucide-vue-next"
 
 const route = useRoute()
 const user = useSupabaseUser()
+
+const profileSettingsOpen = useState("profile-settings-open", () => false)
+const isProfilePage = computed(() => route.path === "/profile")
 
 const { navAvatarDisplayUrl, loadProfileAvatarFromDb } = useNavProfileAvatar()
 
@@ -89,18 +104,54 @@ watch(
   flex-direction: column;
 
   &__header {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 50;
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-    padding: 0.75rem 1.25rem;
+    justify-content: center;
+    height: calc(52px + env(safe-area-inset-top, 0px));
+    padding: env(safe-area-inset-top, 0px) 1.25rem 0;
     border-bottom: 1px solid rgba(0, 0, 0, 0.06);
     background: #fff;
+    box-sizing: border-box;
+  }
+
+  &__header-settings {
+    position: absolute;
+    top: calc(env(safe-area-inset-top, 0px) + 26px);
+    right: 1rem;
+    z-index: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    font: inherit;
+    color: var(--color-text);
+    background: transparent;
+    border: none;
+    border-radius: 0.375rem;
+    cursor: pointer;
+    transform: translateY(-50%);
+
+    &:hover {
+      opacity: 0.85;
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--color-accent);
+      outline-offset: 2px;
+    }
   }
 
   &__brand {
     font-weight: 600;
     font-size: 1.125rem;
+    line-height: 1;
     color: inherit;
     text-decoration: none;
     letter-spacing: -0.02em;
@@ -112,25 +163,29 @@ watch(
 
   &__main {
     flex: 1;
-    padding-bottom: 80px;
+    /* 與 Header 同高：52px 列 + 頂部 safe-area */
+    padding-top: calc(52px + env(safe-area-inset-top, 0px));
+    /* Navbar：上內距 + 按鈕列 + 下內距（含底部安全區） */
+    padding-bottom: calc(
+      0.5rem + 44px + 0.5rem + env(safe-area-inset-bottom, 0px)
+    );
+    box-sizing: border-box;
   }
 
   &__appbar {
     position: fixed;
-    bottom: 8px;
-    left: 8px;
-    right: 8px;
+    bottom: 0;
+    left: 0;
+    right: 0;
     z-index: 50;
     display: flex;
     align-items: stretch;
     gap: 0;
-    padding: 0.5rem 0.35rem;
-    background: rgba(255, 255, 255, 0.72);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border-radius: 16px;
-    border: 1px solid rgba(255, 255, 255, 0.3);
-    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.1);
+    padding: 0.5rem 0.35rem calc(0.5rem + env(safe-area-inset-bottom, 0px));
+    background: #fff;
+    border-radius: 0;
+    border-top: 1px solid var(--color-border);
+    box-sizing: border-box;
   }
 
   &__appbar-btn {

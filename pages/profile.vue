@@ -2,17 +2,6 @@
   <div class="profile">
     <div class="profile__head">
       <h1 class="profile__title">個人檔案</h1>
-      <button
-        type="button"
-        class="profile__settings-btn"
-        aria-haspopup="dialog"
-        :aria-expanded="settingsOpen"
-        aria-controls="profile-settings-dialog"
-        @click="settingsOpen = true"
-      >
-        <Settings :size="20" aria-hidden="true" />
-        <span class="profile__settings-label">設定</span>
-      </button>
     </div>
 
     <section class="profile__identity" aria-label="個人資訊">
@@ -60,7 +49,7 @@
 
     <Teleport to="body">
       <div
-        v-show="settingsOpen"
+        v-show="profileSettingsOpen"
         id="profile-settings-dialog"
         class="profile-settings"
         role="dialog"
@@ -75,7 +64,7 @@
             type="button"
             class="profile-settings__close"
             aria-label="關閉"
-            @click="settingsOpen = false"
+            @click="profileSettingsOpen = false"
           >
             ×
           </button>
@@ -195,7 +184,7 @@
 </template>
 
 <script setup lang="ts">
-import { Settings, User } from "lucide-vue-next"
+import { User } from "lucide-vue-next"
 import type { JwtPayload } from "@supabase/supabase-js"
 
 type TripRow = {
@@ -214,7 +203,7 @@ type ProfileRow = {
   country: string | null
 }
 
-const settingsOpen = ref(false)
+const profileSettingsOpen = useState("profile-settings-open", () => false)
 const avatarModalOpen = ref(false)
 const cropperOpen = ref(false)
 const cropImageObjectUrl = ref<string | null>(null)
@@ -493,7 +482,7 @@ async function onAvatarCropConfirm(blob: Blob) {
 
 async function signOut() {
   await supabase.auth.signOut()
-  settingsOpen.value = false
+  profileSettingsOpen.value = false
   await navigateTo("/")
 }
 
@@ -517,10 +506,6 @@ function formatDate(isoDate: string) {
   padding: 2rem 1.25rem 3rem;
 
   &__head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
     margin-bottom: 0.5rem;
   }
 
@@ -530,33 +515,6 @@ function formatDate(isoDate: string) {
     font-weight: 600;
     letter-spacing: -0.02em;
     color: var(--color-text);
-  }
-
-  &__settings-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    padding: 0.4rem 0.65rem;
-    font: inherit;
-    font-size: 0.875rem;
-    color: var(--color-text);
-    background: var(--color-bg);
-    border: 1px solid var(--color-border);
-    border-radius: 0.375rem;
-    cursor: pointer;
-
-    &:hover {
-      border-color: var(--color-border-strong);
-    }
-
-    &:focus-visible {
-      outline: 2px solid var(--color-accent);
-      outline-offset: 2px;
-    }
-  }
-
-  &__settings-label {
-    font-weight: 500;
   }
 
   &__identity {
@@ -611,7 +569,9 @@ function formatDate(isoDate: string) {
 
   &__upload-status {
     position: fixed;
-    bottom: calc(5rem + env(safe-area-inset-bottom, 0));
+    bottom: calc(
+      0.5rem + 44px + 0.5rem + env(safe-area-inset-bottom, 0px) + 0.75rem
+    );
     left: 50%;
     z-index: 10000;
     transform: translateX(-50%);

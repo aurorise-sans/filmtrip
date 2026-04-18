@@ -260,66 +260,6 @@ onBeforeUnmount(() => {
   revokePreviews()
 })
 
-type GeocodeProximityState =
-  | { kind: "unset" }
-  | { kind: "ok"; lng: number; lat: number }
-  | { kind: "none" }
-
-let geocodeProximityState: GeocodeProximityState = { kind: "unset" }
-let geocodeProximityPromise: Promise<void> | null = null
-
-function ensureGeocodeProximity(): Promise<void> {
-  if (geocodeProximityState.kind !== "unset") return Promise.resolve()
-  if (geocodeProximityPromise) return geocodeProximityPromise
-
-  geocodeProximityPromise = new Promise((resolve) => {
-    if (typeof navigator === "undefined" || !navigator.geolocation) {
-      console.error(
-        "[TripPhotoLocalPicker] geocoding proximity: navigator.geolocation is not available",
-      )
-      geocodeProximityState = { kind: "none" }
-      geocodeProximityPromise = null
-      resolve()
-      return
-    }
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const { longitude, latitude } = pos.coords
-        if (Number.isFinite(longitude) && Number.isFinite(latitude)) {
-          geocodeProximityState = { kind: "ok", lng: longitude, lat: latitude }
-        } else {
-          console.error(
-            "[TripPhotoLocalPicker] geocoding proximity: invalid coordinates from getCurrentPosition",
-            { longitude, latitude },
-          )
-          geocodeProximityState = { kind: "none" }
-        }
-        geocodeProximityPromise = null
-        resolve()
-      },
-      (err: GeolocationPositionError) => {
-        console.error(
-          "[TripPhotoLocalPicker] geocoding proximity: getCurrentPosition error",
-          "code:",
-          err.code,
-          "(1=PERMISSION_DENIED, 2=POSITION_UNAVAILABLE, 3=TIMEOUT)",
-          "message:",
-          err.message,
-        )
-        geocodeProximityState = { kind: "none" }
-        geocodeProximityPromise = null
-        resolve()
-      },
-      { enableHighAccuracy: false, timeout: 10_000, maximumAge: 300_000 },
-    )
-  })
-  return geocodeProximityPromise
-}
-
-onMounted(() => {
-  void ensureGeocodeProximity()
-})
-
 async function fetchGeocodeResults(key: string, query: string) {
   const token = config.public.mapboxToken as string
   if (!token?.trim()) {
@@ -340,12 +280,7 @@ async function fetchGeocodeResults(key: string, query: string) {
   errorMessage.value = ""
 
   try {
-    await ensureGeocodeProximity()
-    const proximityParam =
-      geocodeProximityState.kind === "ok"
-        ? `&proximity=${encodeURIComponent(`${geocodeProximityState.lng},${geocodeProximityState.lat}`)}`
-        : ""
-    const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(q)}.json?access_token=${encodeURIComponent(token)}&limit=5&types=poi,address,place&language=zh${proximityParam}`
+    const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(q)}.json?access_token=${encodeURIComponent(token)}&limit=5&types=poi,address,place&language=zh-TW`
     const res = await fetch(url)
     if (!res.ok) {
       const errText = await res.text().catch(() => "")

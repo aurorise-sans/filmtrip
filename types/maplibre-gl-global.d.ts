@@ -16,8 +16,11 @@ declare global {
 
   interface MapLibreMap {
     addControl: (control: unknown, position?: string) => void
-    on: (type: string, listener: () => void) => void
-    flyTo: (options: { center: [number, number]; zoom: number }) => void
+    on: (type: string, listener: (e?: unknown) => void) => void
+    once: (type: string, listener: (e?: unknown) => void) => void
+    loaded: () => boolean
+    resize: () => void
+    flyTo: (options: { center: [number, number]; zoom?: number; essential?: boolean }) => void
     fitBounds: (bounds: MapLibreLngLatBounds, options: Record<string, unknown>) => void
     remove: () => void
   }
@@ -30,6 +33,8 @@ declare global {
     setLngLat: (lngLat: [number, number]) => MapLibreMarker
     setPopup: (popup: MapLibrePopup) => MapLibreMarker
     addTo: (map: MapLibreMap) => MapLibreMarker
+    on: (type: string, listener: (e?: unknown) => void) => MapLibreMarker
+    getLngLat: () => { lng: number; lat: number }
     remove: () => void
   }
 

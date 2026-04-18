@@ -39,56 +39,42 @@
             alt=""
           />
           <div class="photo-upload__meta">
-            <template v-if="item.hasGps">
+            <template v-if="item.hasGps && item.lat != null && item.lng != null">
               <span class="photo-upload__badge">已偵測 GPS</span>
-              <span class="photo-upload__coords">
-                {{ formatCoord(item.lat!) }}，{{ formatCoord(item.lng!) }}
-              </span>
+              <div class="photo-upload__mini-wrap">
+                <div
+                  :key="`mmap-${item.key}-${item.lat}-${item.lng}`"
+                  class="photo-upload__mini-map-host"
+                  :ref="(el) => bindMiniMap(item.key, el as HTMLElement | null, item.lng!, item.lat!)"
+                />
+                <button
+                  type="button"
+                  class="photo-upload__mini-edit"
+                  @click="openLocationPicker(item, 'adjust')"
+                >
+                  調整地點
+                </button>
+              </div>
             </template>
             <template v-else>
-              <label class="photo-upload__label" :for="`place-${item.key}`">
-                搜尋地點（無 GPS）
-              </label>
-              <div class="photo-upload__geocode">
-                <input
-                  :id="`place-${item.key}`"
-                  class="photo-upload__place-input"
-                  type="search"
-                  maxlength="200"
-                  placeholder="輸入關鍵字搜尋…"
-                  autocomplete="off"
-                  :value="item.geocodeQuery"
-                  @input="onGeocodeInput(item, ($event.target as HTMLInputElement).value)"
-                />
-                <ul
-                  v-if="shouldShowGeocodeDropdown(item.key)"
-                  class="photo-upload__geocode-list"
-                  role="listbox"
+              <div v-if="item.lat != null && item.lng != null && item.placeName" class="photo-upload__place-row">
+                <span class="photo-upload__place-name">{{ item.placeName }}</span>
+                <button
+                  type="button"
+                  class="photo-upload__place-change"
+                  @click="openLocationPicker(item, 'pick')"
                 >
-                  <li v-if="geocodeLoading[item.key]" class="photo-upload__geocode-item photo-upload__geocode-item--muted">
-                    搜尋中…
-                  </li>
-                  <li
-                    v-for="feature in geocodeResultsForKey(item.key)"
-                    :key="feature.id"
-                    class="photo-upload__geocode-item"
-                  >
-                    <button
-                      type="button"
-                      class="photo-upload__geocode-pick"
-                      @mousedown.prevent="selectGeocodeResult(item, feature)"
-                    >
-                      {{ feature.display_name }}
-                    </button>
-                  </li>
-                </ul>
+                  更改
+                </button>
               </div>
-              <span
-                v-if="item.lat != null && item.lng != null && item.placeName"
-                class="photo-upload__coords photo-upload__geocode-selected"
+              <button
+                v-else
+                type="button"
+                class="photo-upload__pick-place"
+                @click="openLocationPicker(item, 'pick')"
               >
-                {{ item.placeName }} · {{ formatCoord(item.lat) }}，{{ formatCoord(item.lng) }}
-              </span>
+                選擇地點
+              </button>
             </template>
           </div>
           <button
@@ -119,11 +105,22 @@
         </button>
       </div>
     </div>
+
+    <PhotoLocationPicker
+      v-if="locationPickerItemKey"
+      :key="locationPickerItemKey"
+      :title="locationPickerTitle"
+      :initial-lat="locationPickerInitialLat"
+      :initial-lng="locationPickerInitialLng"
+      @confirm="onPhotoLocationConfirm"
+      @cancel="locationPickerItemKey = null"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import exifr from "exifr"
+import { mountReadonlyLocationMap } from "~/utils/maplibreClient"
 
 const MAX_FILES = 36
 
@@ -151,68 +148,75 @@ type PendingItem = {
   lng: number | null
   hasGps: boolean
   placeName: string
-  /** 無 GPS：搜尋框內容 */
-  geocodeQuery: string
-}
-
-type NominatimGeocodeResult = {
-  id: string
-  display_name: string
-  lat: number
-  lng: number
-}
-
-function normalizeNominatimResult(
-  raw: Record<string, unknown>,
-  index: number,
-): NominatimGeocodeResult | null {
-  const lat = parseFloat(String(raw.lat ?? ""))
-  const lng = parseFloat(String(raw.lon ?? ""))
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null
-
-  const display_name =
-    typeof raw.display_name === "string" ? raw.display_name : ""
-  if (!display_name.trim()) return null
-
-  const idRaw = raw.place_id ?? raw.osm_id ?? index
-  const id =
-    typeof idRaw === "string" || typeof idRaw === "number"
-      ? String(idRaw)
-      : `feat-${index}`
-
-  return { id, display_name, lat, lng }
 }
 
 const pendingItems = ref<PendingItem[]>([])
 
-const geocodeResults = ref<Record<string, NominatimGeocodeResult[]>>({})
-const geocodeLoading = ref<Record<string, boolean>>({})
-const geocodeDebounceTimers = new Map<string, ReturnType<typeof setTimeout>>()
+const miniCleanups = new Map<string, () => void>()
 
-function geocodeResultsForKey(key: string) {
-  return geocodeResults.value[key] ?? []
+const locationPickerItemKey = ref<string | null>(null)
+const locationPickerTitle = ref("選擇地點")
+const locationPickerInitialLat = ref<number | null>(null)
+const locationPickerInitialLng = ref<number | null>(null)
+const locationPickerKind = ref<"adjust" | "pick">("pick")
+
+function openLocationPicker(item: PendingItem, kind: "adjust" | "pick") {
+  locationPickerKind.value = kind
+  locationPickerTitle.value = kind === "adjust" ? "調整地點" : "選擇地點"
+  locationPickerInitialLat.value = item.lat
+  locationPickerInitialLng.value = item.lng
+  locationPickerItemKey.value = item.key
 }
 
-function shouldShowGeocodeDropdown(key: string) {
-  if (geocodeLoading.value[key]) return true
-  return (geocodeResults.value[key]?.length ?? 0) > 0
-}
+async function onPhotoLocationConfirm(lat: number, lng: number) {
+  const key = locationPickerItemKey.value
+  const kind = locationPickerKind.value
+  locationPickerItemKey.value = null
+  if (!key) return
 
-function clearGeocodeTimers() {
-  for (const t of geocodeDebounceTimers.values()) {
-    clearTimeout(t)
+  const item = pendingItems.value.find((i) => i.key === key)
+  if (!item) return
+
+  item.lat = lat
+  item.lng = lng
+
+  if (kind === "pick") {
+    try {
+      const res = await fetch(
+        `/api/geocode/reverse?lat=${encodeURIComponent(String(lat))}&lng=${encodeURIComponent(String(lng))}`,
+      )
+      if (res.ok) {
+        const data = (await res.json()) as { display_name?: string }
+        const name = typeof data.display_name === "string" ? data.display_name.trim() : ""
+        item.placeName = name || coordLabel(lat, lng)
+      } else {
+        item.placeName = coordLabel(lat, lng)
+      }
+    } catch {
+      item.placeName = coordLabel(lat, lng)
+    }
   }
-  geocodeDebounceTimers.clear()
 }
 
-function clearGeocodeStateForKey(key: string) {
-  const pending = geocodeDebounceTimers.get(key)
-  if (pending) clearTimeout(pending)
-  geocodeDebounceTimers.delete(key)
-  const { [key]: _r, ...restResults } = geocodeResults.value
-  const { [key]: _l, ...restLoading } = geocodeLoading.value
-  geocodeResults.value = restResults
-  geocodeLoading.value = restLoading
+function coordLabel(lat: number, lng: number) {
+  return `${formatCoord(lat)}，${formatCoord(lng)}`
+}
+
+async function bindMiniMap(
+  key: string,
+  el: HTMLElement | null,
+  lng: number,
+  lat: number,
+) {
+  miniCleanups.get(key)?.()
+  miniCleanups.delete(key)
+  if (!el) return
+  try {
+    const destroy = await mountReadonlyLocationMap(el, lng, lat)
+    miniCleanups.set(key, destroy)
+  } catch {
+    /* 小地圖載入失敗時略過 */
+  }
 }
 
 function openPicker() {
@@ -231,14 +235,18 @@ function revokePreviews() {
 function removeItem(key: string) {
   const item = pendingItems.value.find((i) => i.key === key)
   if (item) URL.revokeObjectURL(item.previewUrl)
-  clearGeocodeStateForKey(key)
+  miniCleanups.get(key)?.()
+  miniCleanups.delete(key)
+  if (locationPickerItemKey.value === key) {
+    locationPickerItemKey.value = null
+  }
   pendingItems.value = pendingItems.value.filter((i) => i.key !== key)
 }
 
 function cancelReview() {
-  clearGeocodeTimers()
-  geocodeResults.value = {}
-  geocodeLoading.value = {}
+  for (const d of miniCleanups.values()) d()
+  miniCleanups.clear()
+  locationPickerItemKey.value = null
   revokePreviews()
   noticeMessage.value = ""
   errorMessage.value = ""
@@ -248,74 +256,10 @@ function cancelReview() {
 }
 
 onBeforeUnmount(() => {
-  clearGeocodeTimers()
+  for (const d of miniCleanups.values()) d()
+  miniCleanups.clear()
   revokePreviews()
 })
-
-async function fetchGeocodeResults(key: string, query: string) {
-  const q = query.trim()
-  if (q.length < 2) {
-    geocodeResults.value = { ...geocodeResults.value, [key]: [] }
-    geocodeLoading.value = { ...geocodeLoading.value, [key]: false }
-    return
-  }
-
-  geocodeLoading.value = { ...geocodeLoading.value, [key]: true }
-  errorMessage.value = ""
-
-  try {
-    const res = await fetch(`/api/geocode?q=${encodeURIComponent(q)}`)
-    if (!res.ok) {
-      const errText = await res.text().catch(() => "")
-      throw new Error(errText || `Geocoding 請求失敗（${res.status}）`)
-    }
-    const data = (await res.json()) as unknown[]
-    const features: NominatimGeocodeResult[] = []
-    if (Array.isArray(data)) {
-      data.forEach((item, i) => {
-        if (item && typeof item === "object") {
-          const n = normalizeNominatimResult(item as Record<string, unknown>, i)
-          if (n) features.push(n)
-        }
-      })
-    }
-    geocodeResults.value = { ...geocodeResults.value, [key]: features }
-  } catch (e) {
-    errorMessage.value = e instanceof Error ? e.message : "地點搜尋失敗。"
-    geocodeResults.value = { ...geocodeResults.value, [key]: [] }
-  } finally {
-    geocodeLoading.value = { ...geocodeLoading.value, [key]: false }
-  }
-}
-
-function scheduleGeocodeSearch(key: string, query: string) {
-  const prev = geocodeDebounceTimers.get(key)
-  if (prev) clearTimeout(prev)
-  geocodeDebounceTimers.set(
-    key,
-    setTimeout(() => {
-      geocodeDebounceTimers.delete(key)
-      void fetchGeocodeResults(key, query)
-    }, 400)
-  )
-}
-
-function onGeocodeInput(item: PendingItem, value: string) {
-  item.geocodeQuery = value
-  item.placeName = ""
-  item.lat = null
-  item.lng = null
-  scheduleGeocodeSearch(item.key, value)
-}
-
-function selectGeocodeResult(item: PendingItem, feature: NominatimGeocodeResult) {
-  item.placeName = feature.display_name
-  item.lat = feature.lat
-  item.lng = feature.lng
-  item.geocodeQuery = feature.display_name
-  geocodeResults.value = { ...geocodeResults.value, [item.key]: [] }
-  geocodeLoading.value = { ...geocodeLoading.value, [item.key]: false }
-}
 
 async function onFilesSelected(event: Event) {
   const input = event.target as HTMLInputElement
@@ -374,7 +318,7 @@ async function onFilesSelected(event: Event) {
     }
 
     const hasGps = lat !== null && lng !== null
-    next.push({ key, file, previewUrl, lat, lng, hasGps, placeName: "", geocodeQuery: "" })
+    next.push({ key, file, previewUrl, lat, lng, hasGps, placeName: "" })
   }
 
   pendingItems.value = [...pendingItems.value, ...next]
@@ -408,7 +352,7 @@ async function submitUpload() {
         item.lng == null ||
         !item.placeName.trim())
     ) {
-      errorMessage.value = "請為無 GPS 的照片從搜尋結果中選擇地點。"
+      errorMessage.value = "請為無 GPS 的照片選擇地點。"
       return
     }
   }
@@ -542,7 +486,6 @@ async function submitUpload() {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  /* 不可對此層設 overflow: auto，否則會裁切子層絕對定位的 Geocoding 下拉清單 */
   overflow: visible;
 }
 
@@ -566,7 +509,7 @@ async function submitUpload() {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.35rem;
   font-size: 0.8125rem;
 }
 
@@ -597,82 +540,87 @@ async function submitUpload() {
   border-radius: 0.25rem;
 }
 
-.photo-upload__coords {
-  color: var(--color-text-muted);
-  word-break: break-all;
-}
-
-.photo-upload__label {
-  font-weight: 500;
-  color: var(--color-text);
-}
-
-.photo-upload__geocode {
+.photo-upload__mini-wrap {
   position: relative;
   width: 100%;
-}
-
-.photo-upload__geocode-list {
-  position: absolute;
-  z-index: 10;
-  left: 0;
-  right: 0;
-  top: calc(100% + 2px);
-  margin: 0;
-  padding: 0.25rem 0;
-  list-style: none;
-  max-height: 11rem;
-  overflow-y: auto;
-  border: 1px solid var(--color-border-strong);
+  height: 120px;
   border-radius: 0.375rem;
-  background: var(--color-surface);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  background: var(--color-border);
 }
 
-.photo-upload__geocode-item {
-  margin: 0;
-
-  &--muted {
-    padding: 0.35rem 0.65rem;
-    font-size: 0.8125rem;
-    color: var(--color-text-muted);
-  }
-}
-
-.photo-upload__geocode-pick {
-  display: block;
+.photo-upload__mini-map-host {
   width: 100%;
-  padding: 0.4rem 0.65rem;
-  font: inherit;
-  font-size: 0.8125rem;
-  text-align: left;
-  color: var(--color-text);
-  background: transparent;
-  border: none;
+  height: 100%;
+}
+
+.photo-upload__mini-edit {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.35rem;
+  z-index: 2;
   cursor: pointer;
+  padding: 0.2rem 0.45rem;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--color-text);
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--color-border);
+  border-radius: 0.25rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 
   &:hover {
-    background: rgba(37, 99, 235, 0.08);
+    background: #fff;
+    border-color: var(--color-accent);
   }
 }
 
-.photo-upload__geocode-selected {
-  display: block;
-  margin-top: 0.15rem;
+.photo-upload__place-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  flex-wrap: wrap;
 }
 
-.photo-upload__place-input {
-  width: 100%;
-  padding: 0.4rem 0.5rem;
+.photo-upload__place-name {
+  flex: 1;
+  min-width: 0;
+  color: var(--color-text);
+  word-break: break-word;
+}
+
+.photo-upload__place-change {
+  flex-shrink: 0;
+  cursor: pointer;
+  padding: 0.15rem 0.45rem;
   font: inherit;
-  font-size: 0.875rem;
-  border: 1px solid var(--color-border-strong);
+  font-size: 0.8125rem;
+  color: var(--color-accent);
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: 0.25rem;
+
+  &:hover {
+    border-color: var(--color-accent);
+  }
+}
+
+.photo-upload__pick-place {
+  cursor: pointer;
+  align-self: flex-start;
+  padding: 0.4rem 0.75rem;
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #fff;
+  background: var(--color-accent);
+  border: none;
   border-radius: 0.375rem;
 
-  &:focus {
-    outline: none;
-    border-color: var(--color-accent);
-    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+  &:hover {
+    background: var(--color-accent-hover);
   }
 }
 

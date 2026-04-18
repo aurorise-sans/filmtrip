@@ -3,10 +3,10 @@
     <header class="trip-new__header">
       <h1 class="trip-new__title">建立旅程</h1>
       <p v-if="step === 1" class="trip-new__subtitle">
-        填寫基本資訊後，可接著上傳照片與地點。
+        填寫旅程資訊與封面後，下一步選擇照片；全部確認後才會建立旅程並上傳。
       </p>
       <p v-else class="trip-new__subtitle">
-        旅程已建立，加入照片即可在地圖上呈現足跡。
+        照片僅在本機預覽，按下「完成」後會建立旅程並一次上傳。
       </p>
     </header>
 
@@ -38,11 +38,10 @@
           class="trip-new__progress-btn"
           role="tab"
           :aria-selected="step === 2"
-          :disabled="!createdTripId"
           @click="goToStep(2)"
         >
           <span class="trip-new__progress-num" aria-hidden="true">2</span>
-          上傳照片
+          選擇照片
         </button>
       </li>
     </ol>
@@ -51,7 +50,7 @@
     <form
       v-show="step === 1"
       class="trip-new__form"
-      @submit.prevent="onStep1Submit"
+      @submit.prevent="onStep1Next"
     >
       <div class="trip-new__field">
         <label class="trip-new__label" for="trip-name">旅程名稱</label>
@@ -65,8 +64,6 @@
           maxlength="200"
           required
           placeholder="例如：京都五天四夜"
-          :readonly="isStep1Locked"
-          :disabled="isStep1Locked"
         />
       </div>
 
@@ -80,7 +77,6 @@
             type="date"
             name="start_date"
             required
-            :disabled="isStep1Locked"
           />
         </div>
         <div class="trip-new__field">
@@ -92,7 +88,6 @@
             type="date"
             name="end_date"
             required
-            :disabled="isStep1Locked"
           />
         </div>
       </div>
@@ -111,7 +106,6 @@
               type="radio"
               name="is_public"
               :value="true"
-              :disabled="isStep1Locked"
             />
             <span>公開（顯示在公開地圖）</span>
           </label>
@@ -122,12 +116,56 @@
               type="radio"
               name="is_public"
               :value="false"
-              :disabled="isStep1Locked"
             />
             <span>隱藏（只有自己看得到）</span>
           </label>
         </div>
       </div>
+
+      <ClientOnly>
+        <div class="trip-new__cover-block">
+          <h2 class="trip-new__section-heading">封面照片</h2>
+          <p class="trip-new__cover-hint">
+            選一張代表此旅程的圖片（可選，不需 GPS）。送出建立時才會上傳。
+          </p>
+          <figure v-if="coverPreviewUrl" class="trip-new__cover-figure">
+            <img
+              class="trip-new__cover-img"
+              :src="coverPreviewUrl"
+              alt="旅程封面預覽"
+              loading="lazy"
+              decoding="async"
+            />
+          </figure>
+          <input
+            ref="coverFileInputRef"
+            class="trip-new__cover-input"
+            type="file"
+            accept="image/*"
+            tabindex="-1"
+            aria-hidden="true"
+            @change="onCoverFileSelected"
+          />
+          <div class="trip-new__cover-actions">
+            <button
+              type="button"
+              class="trip-new__cover-btn"
+              :disabled="!userId"
+              @click="openCoverFilePicker"
+            >
+              {{ coverFile ? "更換封面" : "選擇封面照片" }}
+            </button>
+            <button
+              v-if="coverFile"
+              type="button"
+              class="trip-new__cover-clear"
+              @click="clearCoverSelection"
+            >
+              移除封面
+            </button>
+          </div>
+        </div>
+      </ClientOnly>
 
       <p v-if="errorMessage" class="trip-new__error" role="alert">
         {{ errorMessage }}
@@ -137,7 +175,7 @@
         <button
           class="trip-new__submit"
           type="submit"
-          :disabled="savingStep1 || !userId"
+          :disabled="!userId"
         >
           下一步
         </button>
@@ -148,89 +186,16 @@
     <div v-show="step === 2" class="trip-new__step2">
       <div class="trip-new__confirm card-like">
         <p class="trip-new__confirm-label">旅程名稱</p>
-        <p class="trip-new__confirm-name">{{ createdTripName }}</p>
+        <p class="trip-new__confirm-name">{{ name.trim() || "（未命名）" }}</p>
       </div>
 
-      <div v-if="createdTripId" class="trip-new__upload-wrap card-like">
+      <div class="trip-new__upload-wrap card-like">
         <ClientOnly>
-          <div class="trip-new__cover-block">
-            <h2 class="trip-new__upload-heading">封面照片</h2>
-            <p class="trip-new__cover-hint">
-              選一張代表此旅程的圖片（可選，不需 GPS）。
-            </p>
-            <figure v-if="tripCoverUrl" class="trip-new__cover-figure">
-              <img
-                class="trip-new__cover-img"
-                :src="tripCoverUrl"
-                alt="旅程封面預覽"
-                loading="lazy"
-                decoding="async"
-              />
-            </figure>
-            <input
-              ref="coverFileInputRef"
-              class="trip-new__cover-input"
-              type="file"
-              accept="image/*"
-              tabindex="-1"
-              aria-hidden="true"
-              @change="onCoverFileSelected"
-            />
-            <button
-              type="button"
-              class="trip-new__cover-btn"
-              :disabled="coverUploadPending || !userId"
-              @click="openCoverFilePicker"
-            >
-              {{ coverUploadPending ? "上傳中…" : "上傳封面照片" }}
-            </button>
-            <p
-              v-if="coverUploadError"
-              class="trip-new__cover-error"
-              role="alert"
-            >
-              {{ coverUploadError }}
-            </p>
-          </div>
+          <TripPhotoLocalPicker ref="localPickerRef" />
+          <template #fallback>
+            <p class="trip-new__picker-fallback">載入選圖元件中…</p>
+          </template>
         </ClientOnly>
-        <h2 class="trip-new__upload-heading trip-new__upload-heading--photos">
-          上傳照片
-        </h2>
-        <TripPhotoUploadPanel :trip-id="createdTripId" @uploaded="onPhotosUploaded" />
-
-        <div class="trip-new__uploaded">
-          <p class="trip-new__uploaded-title">已上傳照片</p>
-          <p v-if="photosLoading" class="trip-new__uploaded-hint">載入中…</p>
-          <p v-else-if="photosError" class="trip-new__uploaded-error" role="alert">
-            {{ photosError }}
-          </p>
-          <p v-else-if="!uploadedPhotos.length" class="trip-new__uploaded-hint">
-            尚未上傳照片
-          </p>
-          <div v-else class="trip-new__uploaded-grid">
-            <figure
-              v-for="photo in uploadedPhotos"
-              :key="photo.id"
-              class="trip-new__uploaded-figure"
-            >
-              <button
-                type="button"
-                class="trip-new__uploaded-delete"
-                :disabled="deletingPhotoId === photo.id"
-                @click="deleteUploadedPhoto(photo)"
-              >
-                {{ deletingPhotoId === photo.id ? "…" : "✕" }}
-              </button>
-              <img
-                class="trip-new__uploaded-thumb"
-                :src="photo.image_url"
-                :alt="photo.place_name?.trim() || '旅程照片'"
-                loading="lazy"
-                decoding="async"
-              />
-            </figure>
-          </div>
-        </div>
       </div>
 
       <p v-if="step2Error" class="trip-new__error" role="alert">
@@ -242,17 +207,17 @@
           type="button"
           class="trip-new__ghost"
           :disabled="finishing"
-          @click="goToTripDetail"
+          @click="goToStep(1)"
         >
-          跳過，之後再上傳
+          上一步
         </button>
         <button
           type="button"
           class="trip-new__submit"
-          :disabled="finishing"
-          @click="goToTripDetail"
+          :disabled="finishing || !userId"
+          @click="onComplete"
         >
-          {{ finishing ? "前往中…" : "完成" }}
+          {{ finishing ? "建立並上傳中…" : "完成" }}
         </button>
       </div>
     </div>
@@ -261,6 +226,7 @@
 
 <script setup lang="ts">
 import type { JwtPayload } from "@supabase/supabase-js"
+import type { LocalPendingPhotoItem } from "~/types/tripPhotoLocal"
 
 const supabase = useSupabaseClient()
 const userClaims = useSupabaseUser()
@@ -271,255 +237,234 @@ const startDate = ref("")
 const endDate = ref("")
 const isPublic = ref(true)
 const errorMessage = ref("")
-const savingStep1 = ref(false)
-
-const createdTripId = ref<string | null>(null)
-const createdTripName = ref("")
 const step2Error = ref("")
 const finishing = ref(false)
-const photosLoading = ref(false)
-const photosError = ref("")
-const deletingPhotoId = ref<string | null>(null)
 
-type UploadedPhoto = {
-  id: string
-  image_url: string
-  place_name: string | null
-}
+const coverFile = ref<File | null>(null)
+const coverPreviewUrl = ref<string | null>(null)
+let coverPreviewRevoke: (() => void) | null = null
 
-const uploadedPhotos = ref<UploadedPhoto[]>([])
-const tripCoverUrl = ref<string | null>(null)
 const coverFileInputRef = ref<HTMLInputElement | null>(null)
-const coverUploadPending = ref(false)
-const coverUploadError = ref("")
-const isStep1Locked = computed(() => Boolean(createdTripId.value))
+const localPickerRef = ref<{
+  validateLocations: () => boolean
+  getPendingItems: () => readonly LocalPendingPhotoItem[]
+  clearError: () => void
+} | null>(null)
 
 const userId = computed(() => {
   const claims = userClaims.value as JwtPayload | null
   return claims?.sub ?? null
 })
 
-async function onStep1Submit() {
-  errorMessage.value = ""
-
-  if (createdTripId.value) {
-    step.value = 2
-    return
+function revokeCoverPreview() {
+  if (coverPreviewRevoke) {
+    coverPreviewRevoke()
+    coverPreviewRevoke = null
   }
+  coverPreviewUrl.value = null
+}
 
-  if (!userId.value) {
-    errorMessage.value = "無法取得使用者資訊，請重新登入。"
-    return
-  }
+function openCoverFilePicker() {
+  coverFileInputRef.value?.click()
+}
 
+function onCoverFileSelected(ev: Event) {
+  const input = ev.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ""
+  if (!file?.type.startsWith("image/")) return
+  revokeCoverPreview()
+  coverFile.value = file
+  const url = URL.createObjectURL(file)
+  coverPreviewUrl.value = url
+  coverPreviewRevoke = () => URL.revokeObjectURL(url)
+}
+
+function clearCoverSelection() {
+  coverFile.value = null
+  revokeCoverPreview()
+}
+
+function validateStep1Fields(): string | null {
   const trimmed = name.value.trim()
-  if (!trimmed) {
-    errorMessage.value = "請輸入旅程名稱。"
+  if (!trimmed) return "請輸入旅程名稱。"
+  if (!startDate.value || !endDate.value) return "請選擇開始與結束日期。"
+  if (endDate.value < startDate.value) return "結束日期不可早於開始日期。"
+  return null
+}
+
+function onStep1Next() {
+  errorMessage.value = ""
+  const err = validateStep1Fields()
+  if (err) {
+    errorMessage.value = err
     return
   }
-
-  if (!startDate.value || !endDate.value) {
-    errorMessage.value = "請選擇開始與結束日期。"
-    return
-  }
-
-  if (endDate.value < startDate.value) {
-    errorMessage.value = "結束日期不可早於開始日期。"
-    return
-  }
-
-  savingStep1.value = true
-
-  const { data, error } = await supabase
-    .from("trips")
-    .insert({
-      user_id: userId.value,
-      name: trimmed,
-      start_date: startDate.value,
-      end_date: endDate.value,
-      is_public: isPublic.value,
-    })
-    .select("id")
-    .single()
-
-  savingStep1.value = false
-
-  if (error) {
-    errorMessage.value = error.message
-    return
-  }
-
-  if (!data?.id) {
-    errorMessage.value = "建立成功但無法取得旅程編號，請稍後再試。"
-    return
-  }
-
-  await refreshNuxtData("profile-trips")
-
-  createdTripId.value = data.id
-  createdTripName.value = trimmed
-  step2Error.value = ""
-  uploadedPhotos.value = []
-  photosError.value = ""
   step.value = 2
-  await fetchUploadedPhotos(data.id)
-  await fetchTripCover(data.id)
-
+  step2Error.value = ""
   if (import.meta.client) {
     window.scrollTo({ top: 0, behavior: "smooth" })
   }
 }
 
-async function fetchTripCover(tripId: string) {
-  const { data, error } = await supabase
-    .from("trips")
-    .select("cover_image_url")
-    .eq("id", tripId)
-    .maybeSingle()
-  if (error) {
-    tripCoverUrl.value = null
-    return
-  }
-  tripCoverUrl.value = data?.cover_image_url ?? null
-}
-
-async function fetchUploadedPhotos(tripId: string) {
-  photosLoading.value = true
-  photosError.value = ""
-  const { data, error } = await supabase
-    .from("photos")
-    .select("id, image_url, place_name, created_at")
-    .eq("trip_id", tripId)
-    .order("created_at", { ascending: false })
-
-  photosLoading.value = false
-
-  if (error) {
-    photosError.value = "無法載入已上傳照片，請稍後再試。"
-    return
-  }
-
-  uploadedPhotos.value = (data ?? []) as UploadedPhoto[]
-}
-
-async function onPhotosUploaded() {
-  const id = createdTripId.value
-  if (!id) return
-  await fetchUploadedPhotos(id)
-}
-
-function openCoverFilePicker() {
-  coverUploadError.value = ""
-  coverFileInputRef.value?.click()
-}
-
-async function onCoverFileSelected(ev: Event) {
-  const input = ev.target as HTMLInputElement
-  const file = input.files?.[0]
-  input.value = ""
-  const tripId = createdTripId.value
-  const uid = userId.value
-  if (!file || !tripId || !uid) return
-
-  coverUploadPending.value = true
-  coverUploadError.value = ""
-  try {
-    const { publicUrl } = await uploadTripCoverAndUpdateRow(supabase, {
-      userId: uid,
-      tripId,
-      file,
-    })
-    tripCoverUrl.value = publicUrl
-    await refreshNuxtData("profile-trips")
-  } catch (e) {
-    coverUploadError.value =
-      e instanceof Error ? e.message : "上傳失敗，請稍後再試。"
-  } finally {
-    coverUploadPending.value = false
-  }
-}
-
-function extractPhotoObjectPath(imageUrl: string): string | null {
-  const marker = "/storage/v1/object/public/photos/"
-  const parseFrom = (value: string) => {
-    const clean = value.split("?")[0]?.split("#")[0] ?? ""
-    const idx = clean.indexOf(marker)
-    if (idx === -1) return null
-    const path = clean.slice(idx + marker.length).trim()
-    return path ? decodeURIComponent(path) : null
-  }
-
-  try {
-    return parseFrom(new URL(imageUrl).pathname)
-  } catch {
-    return parseFrom(imageUrl)
-  }
-}
-
-async function deleteUploadedPhoto(photo: UploadedPhoto) {
-  const tripId = createdTripId.value
-  if (!tripId || deletingPhotoId.value) return
-
-  photosError.value = ""
-  deletingPhotoId.value = photo.id
-
-  try {
-    const objectPath = extractPhotoObjectPath(photo.image_url)
-    if (!objectPath) {
-      throw new Error("找不到圖片儲存路徑")
-    }
-
-    const { error: storageErr } = await supabase.storage
-      .from("photos")
-      .remove([objectPath])
-    if (storageErr) throw new Error(storageErr.message)
-
-    const { error: dbErr } = await supabase
-      .from("photos")
-      .delete()
-      .eq("id", photo.id)
-      .eq("trip_id", tripId)
-    if (dbErr) throw new Error(dbErr.message)
-
-    await fetchUploadedPhotos(tripId)
-  } catch (e) {
-    photosError.value = e instanceof Error ? `刪除失敗：${e.message}` : "刪除失敗，請稍後再試。"
-  } finally {
-    deletingPhotoId.value = null
-  }
-}
-
-async function goToTripDetail() {
+async function goToStep(targetStep: 1 | 2) {
+  errorMessage.value = ""
   step2Error.value = ""
-  const id = createdTripId.value
-  if (!id) {
-    step2Error.value = "找不到旅程編號，請重新建立。"
+  if (targetStep === 2) {
+    const err = validateStep1Fields()
+    if (err) {
+      errorMessage.value = err
+      return
+    }
+  }
+  step.value = targetStep
+  if (import.meta.client) {
+    window.scrollTo({ top: 0, behavior: "smooth" })
+  }
+}
+
+function storagePathForPhoto(user: string, trip: string, file: File) {
+  const match = file.name.match(/(\.[^.]+)$/)
+  const ext = (match ? match[1] : ".jpg").toLowerCase()
+  const safeExt = /^\.(jpe?g|png|gif|webp|heic|heif)$/i.test(ext) ? ext : ".jpg"
+  return `${user}/${trip}/${crypto.randomUUID()}${safeExt}`
+}
+
+async function onComplete() {
+  step2Error.value = ""
+  const err1 = validateStep1Fields()
+  if (err1) {
+    step2Error.value = err1
+    return
+  }
+
+  if (!userId.value) {
+    step2Error.value = "無法取得使用者資訊，請重新登入。"
+    return
+  }
+
+  const picker = localPickerRef.value
+  if (!picker) {
+    step2Error.value = "選圖元件尚未就緒，請重新整理頁面。"
+    return
+  }
+
+  picker.clearError()
+  if (!picker.validateLocations()) {
+    return
+  }
+
+  const items = [...picker.getPendingItems()]
+  const uid = userId.value
+
+  const {
+    data: { user: authUser },
+    error: authError,
+  } = await supabase.auth.getUser()
+  const uploadUserId = authUser?.id ?? ""
+  if (!uploadUserId || authError) {
+    step2Error.value = "請先登入。"
     return
   }
 
   finishing.value = true
+
+  let tripId: string | null = null
+  const uploadedPhotoPaths: string[] = []
+  let coverStoragePath: string | null = null
+
   try {
+    const trimmed = name.value.trim()
+    const { data: tripRow, error: tripErr } = await supabase
+      .from("trips")
+      .insert({
+        user_id: uid,
+        name: trimmed,
+        start_date: startDate.value,
+        end_date: endDate.value,
+        is_public: isPublic.value,
+      })
+      .select("id")
+      .single()
+
+    if (tripErr) throw new Error(tripErr.message)
+    if (!tripRow?.id) throw new Error("建立成功但無法取得旅程編號。")
+
+    tripId = tripRow.id
+    coverStoragePath = `covers/${uploadUserId}/${tripId}.jpg`
+
+    if (coverFile.value) {
+      await uploadTripCoverAndUpdateRow(supabase, {
+        userId: uploadUserId,
+        tripId,
+        file: coverFile.value,
+      })
+    } else {
+      coverStoragePath = null
+    }
+
+    const inserts: {
+      trip_id: string
+      user_id: string
+      image_url: string
+      latitude: number | null
+      longitude: number | null
+      place_name: string | null
+    }[] = []
+
+    for (const item of items) {
+      const objectPath = storagePathForPhoto(uploadUserId, tripId, item.file)
+      const { error: upErr } = await supabase.storage
+        .from("photos")
+        .upload(objectPath, item.file, {
+          cacheControl: "3600",
+          upsert: false,
+          contentType: item.file.type || "image/jpeg",
+        })
+      if (upErr) throw new Error(upErr.message)
+
+      uploadedPhotoPaths.push(objectPath)
+
+      const { data: pub } = supabase.storage.from("photos").getPublicUrl(objectPath)
+      inserts.push({
+        trip_id: tripId,
+        user_id: uploadUserId,
+        image_url: pub.publicUrl,
+        latitude: item.lat,
+        longitude: item.lng,
+        place_name: item.hasGps ? null : item.placeName.trim(),
+      })
+    }
+
+    if (inserts.length) {
+      const { error: insErr } = await supabase.from("photos").insert(inserts)
+      if (insErr) throw new Error(insErr.message)
+    }
+
     await refreshNuxtData("profile-trips")
-    await navigateTo(`/trips/${id}`)
-  } catch {
-    step2Error.value = "無法前往旅程頁面，請稍後再試。"
+    await navigateTo(`/trips/${tripId}`)
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "建立失敗，請稍後再試。"
+
+    if (uploadedPhotoPaths.length) {
+      await supabase.storage.from("photos").remove(uploadedPhotoPaths)
+    }
+    if (coverStoragePath && tripId) {
+      await supabase.storage.from("photos").remove([coverStoragePath])
+    }
+    if (tripId) {
+      await supabase.from("trips").delete().eq("id", tripId)
+    }
+
+    step2Error.value = `建立失敗，已還原：${msg}`
   } finally {
     finishing.value = false
   }
 }
 
-async function goToStep(targetStep: 1 | 2) {
-  if (targetStep === 2 && !createdTripId.value) {
-    errorMessage.value = "請先完成旅程資訊並建立旅程。"
-    return
-  }
-  step.value = targetStep
-  errorMessage.value = ""
-  step2Error.value = ""
-  if (targetStep === 2 && createdTripId.value) {
-    await fetchTripCover(createdTripId.value)
-  }
-}
+onBeforeUnmount(() => {
+  revokeCoverPreview()
+})
 
 useHead({
   title: "建立旅程 | Filmtrip",
@@ -677,8 +622,21 @@ useHead({
     margin-bottom: 1.25rem;
   }
 
+  &__picker-fallback {
+    margin: 0;
+    font-size: 0.875rem;
+    color: var(--color-text-muted);
+  }
+
+  &__section-heading {
+    margin: 0 0 0.5rem;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--color-text);
+  }
+
   &__cover-block {
-    margin-bottom: 1.5rem;
+    margin-bottom: 1.25rem;
     padding-bottom: 1.25rem;
     border-bottom: 1px solid var(--color-border);
   }
@@ -718,6 +676,13 @@ useHead({
     border: 0;
   }
 
+  &__cover-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
   &__cover-btn {
     padding: 0.45rem 0.9rem;
     font: inherit;
@@ -740,93 +705,19 @@ useHead({
     }
   }
 
-  &__cover-error {
-    margin: 0.5rem 0 0;
-    font-size: 0.875rem;
-    color: var(--color-danger);
-  }
-
-  &__upload-heading--photos {
-    margin-top: 0;
-  }
-
-  &__upload-heading {
-    margin: 0 0 1rem;
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--color-text);
-  }
-
-  &__uploaded {
-    margin-top: 1rem;
-  }
-
-  &__uploaded-title {
-    margin: 0 0 0.5rem;
-    font-size: 0.9375rem;
-    font-weight: 600;
-    color: var(--color-text);
-  }
-
-  &__uploaded-hint {
-    margin: 0;
+  &__cover-clear {
+    padding: 0.45rem 0.75rem;
+    font: inherit;
     font-size: 0.875rem;
     color: var(--color-text-muted);
-  }
-
-  &__uploaded-error {
-    margin: 0;
-    font-size: 0.875rem;
-    color: var(--color-danger);
-  }
-
-  &__uploaded-grid {
-    margin-top: 0.65rem;
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(7rem, 1fr));
-    gap: 0.5rem;
-  }
-
-  &__uploaded-figure {
-    margin: 0;
-    position: relative;
-  }
-
-  &__uploaded-thumb {
-    width: 100%;
-    aspect-ratio: 1;
-    display: block;
-    object-fit: cover;
-    border-radius: 0.375rem;
+    background: transparent;
     border: 1px solid var(--color-border);
-    background: var(--color-border);
-  }
-
-  &__uploaded-delete {
-    position: absolute;
-    top: 0.35rem;
-    right: 0.35rem;
-    width: 1.45rem;
-    height: 1.45rem;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border: none;
-    border-radius: 999px;
-    background: rgba(17, 24, 39, 0.82);
-    color: #fff;
-    font-size: 0.875rem;
-    line-height: 1;
+    border-radius: 0.5rem;
     cursor: pointer;
-    transition: background 0.15s ease;
 
-    &:hover:not(:disabled) {
-      background: rgba(17, 24, 39, 0.96);
-    }
-
-    &:disabled {
-      opacity: 0.7;
-      cursor: not-allowed;
+    &:hover {
+      color: var(--color-text);
+      border-color: var(--color-text-muted);
     }
   }
 
@@ -940,7 +831,9 @@ useHead({
     background: transparent;
     border: 1px solid transparent;
     border-radius: 0.5rem;
-    transition: color 0.15s ease, background 0.15s ease;
+    transition:
+      color 0.15s ease,
+      background 0.15s ease;
 
     &:hover:not(:disabled) {
       color: var(--color-text);

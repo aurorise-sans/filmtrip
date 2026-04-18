@@ -18,6 +18,7 @@ export interface Database {
           id: string
           avatar_url: string | null
           display_name: string | null
+          email: string | null
           city: string | null
           country: string | null
           created_at: string
@@ -27,6 +28,7 @@ export interface Database {
           id: string
           avatar_url?: string | null
           display_name?: string | null
+          email?: string | null
           city?: string | null
           country?: string | null
           created_at?: string
@@ -35,6 +37,7 @@ export interface Database {
         Update: {
           avatar_url?: string | null
           display_name?: string | null
+          email?: string | null
           city?: string | null
           country?: string | null
           updated_at?: string

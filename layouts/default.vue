@@ -20,6 +20,14 @@
       </NuxtLink>
       <NuxtLink
         class="layout-default__appbar-btn"
+        :class="{ 'layout-default__appbar-btn--active': mapActive }"
+        to="/map"
+      >
+        <Map :size="24" aria-hidden="true" />
+        <span class="layout-default__appbar-sr">地圖</span>
+      </NuxtLink>
+      <NuxtLink
+        class="layout-default__appbar-btn"
         :class="{ 'layout-default__appbar-btn--active': plusActive }"
         to="/trips/new"
       >
@@ -47,7 +55,7 @@
 </template>
 
 <script setup lang="ts">
-import { Home, Plus, User } from "lucide-vue-next"
+import { Home, Map, Plus, User } from "lucide-vue-next"
 
 const route = useRoute()
 const user = useSupabaseUser()
@@ -55,6 +63,7 @@ const user = useSupabaseUser()
 const { navAvatarDisplayUrl, loadProfileAvatarFromDb } = useNavProfileAvatar()
 
 const homeActive = computed(() => route.path === "/")
+const mapActive = computed(() => route.path === "/map")
 const plusActive = computed(() => route.path === "/trips/new")
 const profileActive = computed(() => route.path.startsWith("/profile"))
 

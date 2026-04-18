@@ -87,7 +87,7 @@
                       class="photo-upload__geocode-pick"
                       @mousedown.prevent="selectGeocodeResult(item, feature)"
                     >
-                      {{ feature.place_name }}
+                      {{ feature.display_name }}
                     </button>
                   </li>
                 </ul>
@@ -131,69 +131,42 @@ import type { LocalPendingPhotoItem } from "~/types/tripPhotoLocal"
 
 const MAX_FILES = 36
 
-const config = useRuntimeConfig()
-
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const reading = ref(false)
 const noticeMessage = ref("")
 const errorMessage = ref("")
 
-type MapboxGeocodeFeature = {
+type NominatimGeocodeResult = {
   id: string
-  place_name: string
-  center: [number, number]
+  display_name: string
+  lat: number
+  lng: number
 }
 
-function normalizeGeocodeFeature(raw: Record<string, unknown>): MapboxGeocodeFeature | null {
-  const idRaw = raw.id
+function normalizeNominatimResult(
+  raw: Record<string, unknown>,
+  index: number,
+): NominatimGeocodeResult | null {
+  const lat = parseFloat(String(raw.lat ?? ""))
+  const lng = parseFloat(String(raw.lon ?? ""))
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null
+
+  const display_name =
+    typeof raw.display_name === "string" ? raw.display_name : ""
+  if (!display_name.trim()) return null
+
+  const idRaw = raw.place_id ?? raw.osm_id ?? index
   const id =
     typeof idRaw === "string" || typeof idRaw === "number"
       ? String(idRaw)
-      : `feat-${Math.random().toString(36).slice(2)}`
+      : `feat-${index}`
 
-  let lng: number | undefined
-  let lat: number | undefined
-
-  const c = raw.center
-  if (Array.isArray(c) && c.length >= 2) {
-    const a = Number(c[0])
-    const b = Number(c[1])
-    if (Number.isFinite(a) && Number.isFinite(b)) {
-      lng = a
-      lat = b
-    }
-  }
-
-  if (lng === undefined || lat === undefined) {
-    const geom = raw.geometry as { coordinates?: unknown } | undefined
-    const coords = geom?.coordinates
-    if (Array.isArray(coords) && coords.length >= 2) {
-      const a = Number(coords[0])
-      const b = Number(coords[1])
-      if (Number.isFinite(a) && Number.isFinite(b)) {
-        lng = a
-        lat = b
-      }
-    }
-  }
-
-  if (lng === undefined || lat === undefined) return null
-
-  const placeName =
-    typeof raw.place_name === "string"
-      ? raw.place_name
-      : typeof raw.text === "string"
-        ? raw.text
-        : ""
-
-  if (!placeName.trim()) return null
-
-  return { id, place_name: placeName, center: [lng, lat] }
+  return { id, display_name, lat, lng }
 }
 
 const pendingItems = ref<LocalPendingPhotoItem[]>([])
 
-const geocodeResults = ref<Record<string, MapboxGeocodeFeature[]>>({})
+const geocodeResults = ref<Record<string, NominatimGeocodeResult[]>>({})
 const geocodeLoading = ref<Record<string, boolean>>({})
 const geocodeDebounceTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
@@ -261,14 +234,6 @@ onBeforeUnmount(() => {
 })
 
 async function fetchGeocodeResults(key: string, query: string) {
-  const token = config.public.mapboxToken as string
-  if (!token?.trim()) {
-    errorMessage.value = "未設定 Mapbox Token（NUXT_PUBLIC_MAPBOX_TOKEN）。"
-    geocodeResults.value = { ...geocodeResults.value, [key]: [] }
-    geocodeLoading.value = { ...geocodeLoading.value, [key]: false }
-    return
-  }
-
   const q = query.trim()
   if (q.length < 2) {
     geocodeResults.value = { ...geocodeResults.value, [key]: [] }
@@ -280,17 +245,20 @@ async function fetchGeocodeResults(key: string, query: string) {
   errorMessage.value = ""
 
   try {
-    const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(q)}.json?access_token=${encodeURIComponent(token)}&limit=5&types=poi,address,place&language=zh-TW`
-    const res = await fetch(url)
+    const res = await fetch(`/api/geocode?q=${encodeURIComponent(q)}`)
     if (!res.ok) {
       const errText = await res.text().catch(() => "")
       throw new Error(errText || `Geocoding 請求失敗（${res.status}）`)
     }
-    const data = (await res.json()) as { features?: Record<string, unknown>[] }
-    const features: MapboxGeocodeFeature[] = []
-    for (const f of data.features ?? []) {
-      const n = normalizeGeocodeFeature(f)
-      if (n) features.push(n)
+    const data = (await res.json()) as unknown[]
+    const features: NominatimGeocodeResult[] = []
+    if (Array.isArray(data)) {
+      data.forEach((item, i) => {
+        if (item && typeof item === "object") {
+          const n = normalizeNominatimResult(item as Record<string, unknown>, i)
+          if (n) features.push(n)
+        }
+      })
     }
     geocodeResults.value = { ...geocodeResults.value, [key]: features }
   } catch (e) {
@@ -321,12 +289,11 @@ function onGeocodeInput(item: LocalPendingPhotoItem, value: string) {
   scheduleGeocodeSearch(item.key, value)
 }
 
-function selectGeocodeResult(item: LocalPendingPhotoItem, feature: MapboxGeocodeFeature) {
-  const [lng, lat] = feature.center
-  item.placeName = feature.place_name
-  item.lat = lat
-  item.lng = lng
-  item.geocodeQuery = feature.place_name
+function selectGeocodeResult(item: LocalPendingPhotoItem, feature: NominatimGeocodeResult) {
+  item.placeName = feature.display_name
+  item.lat = feature.lat
+  item.lng = feature.lng
+  item.geocodeQuery = feature.display_name
   geocodeResults.value = { ...geocodeResults.value, [item.key]: [] }
   geocodeLoading.value = { ...geocodeLoading.value, [item.key]: false }
 }

@@ -20,12 +20,6 @@ export default defineNuxtConfig({
     },
   },
 
-  runtimeConfig: {
-    public: {
-      mapboxToken: "",
-    },
-  },
-
   modules: ["@nuxtjs/supabase"],
 
   supabase: {

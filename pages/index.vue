@@ -92,6 +92,7 @@
 
 <script setup lang="ts">
 import { User } from "lucide-vue-next"
+import { resolveUserDisplayName } from "~/utils/resolveUserDisplayName"
 
 type FeedPhotoRow = {
   id: string
@@ -134,16 +135,6 @@ function selfMetaString(key: string): string | null {
   }
   const v = (u.user_metadata as Record<string, unknown>)[key]
   return typeof v === "string" && v.trim() ? v : null
-}
-
-/** 例如 sans.fu@aurorise.com.tw → sans.fu */
-function emailLocalPart(email: string | null | undefined): string | null {
-  if (!email || typeof email !== "string") return null
-  const trimmed = email.trim()
-  const i = trimmed.indexOf("@")
-  if (i <= 0) return null
-  const local = trimmed.slice(0, i).trim()
-  return local.length ? local : null
 }
 
 const { data: trips, pending, error: loadError } = await useAsyncData(
@@ -213,20 +204,14 @@ function authorAvatarUrl(trip: FeedTripWithProfile): string | null {
 
 function authorDisplayName(trip: FeedTripWithProfile): string {
   const p = trip._profile
-  const fromName = p?.display_name?.trim()
-  if (fromName) return fromName
-
-  const fromProfileEmail = emailLocalPart(p?.email ?? undefined)
-  if (fromProfileEmail) return fromProfileEmail
-
-  if (user.value?.id === trip.user_id) {
-    const metaName = selfMetaString("full_name")
-    if (metaName) return metaName
-    const selfEmail = emailLocalPart(user.value.email ?? undefined)
-    if (selfEmail) return selfEmail
-  }
-
-  return `#${trip.user_id.replace(/-/g, "").slice(0, 8)}`
+  const isSelf = user.value?.id === trip.user_id
+  return resolveUserDisplayName({
+    profileDisplayName: p?.display_name,
+    email: p?.email ?? (isSelf ? user.value?.email : null),
+    userMetadata: isSelf
+      ? ((user.value?.user_metadata ?? null) as Record<string, unknown> | null)
+      : null,
+  })
 }
 
 const fetchError = computed(() => loadError.value?.message ?? "")

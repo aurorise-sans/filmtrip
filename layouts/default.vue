@@ -47,7 +47,7 @@
         <span class="layout-default__appbar-sr">建立旅程</span>
       </NuxtLink>
       <NuxtLink
-        class="layout-default__appbar-btn"
+        class="layout-default__appbar-btn layout-default__appbar-btn--profile"
         :class="{ 'layout-default__appbar-btn--active': profileActive }"
         to="/profile"
       >
@@ -60,7 +60,12 @@
           height="32"
         />
         <User v-else :size="24" aria-hidden="true" />
-        <span class="layout-default__appbar-sr">個人</span>
+        <span class="layout-default__appbar-profile-label" aria-hidden="true">{{
+          navResolvedDisplayName
+        }}</span>
+        <span class="layout-default__appbar-sr"
+          >{{ navResolvedDisplayName }}，個人</span
+        >
       </NuxtLink>
     </nav>
   </div>
@@ -75,7 +80,11 @@ const user = useSupabaseUser()
 const profileSettingsOpen = useState("profile-settings-open", () => false)
 const isProfilePage = computed(() => route.path === "/profile")
 
-const { navAvatarDisplayUrl, loadProfileAvatarFromDb } = useNavProfileAvatar()
+const {
+  navAvatarDisplayUrl,
+  navResolvedDisplayName,
+  loadProfileAvatarFromDb,
+} = useNavProfileAvatar()
 
 const homeActive = computed(() => route.path === "/")
 const mapActive = computed(() => route.path === "/map")
@@ -208,6 +217,26 @@ watch(
     &--active {
       color: var(--color-accent);
     }
+
+    &--profile {
+      flex-direction: column;
+      gap: 0.15rem;
+      min-width: 0;
+    }
+  }
+
+  &__appbar-profile-label {
+    display: block;
+    max-width: 100%;
+    padding: 0 0.15rem;
+    font-size: 0.625rem;
+    font-weight: 600;
+    line-height: 1.15;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: inherit;
   }
 
   &__appbar-avatar {

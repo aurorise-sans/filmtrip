@@ -27,21 +27,27 @@
         <User v-else class="profile__avatar-icon" :size="40" aria-hidden="true" />
       </button>
 
-      <h2 class="profile__display-name">
-        <template v-if="profileLoading">載入中…</template>
-        <template v-else>{{ displayName }}</template>
-      </h2>
-
-      <p class="profile__location">
-        <template v-if="profileLoading">載入中…</template>
-        <template v-else>{{ locationLine }}</template>
-      </p>
+      <template v-if="profileLoading">
+        <p class="profile__display-name profile__display-name--loading">載入中…</p>
+        <p class="profile__location profile__location--loading">載入中…</p>
+      </template>
+      <template v-else>
+        <h2 class="profile__display-name">{{ displayName }}</h2>
+        <p class="profile__location">{{ locationLine }}</p>
+      </template>
       <p class="profile__trip-count">
         <template v-if="pending">載入中…</template>
         <template v-else>{{ tripCountLabel }}</template>
       </p>
 
-      <p v-if="email" class="profile__meta">目前帳號：{{ email }}</p>
+      <button
+        v-if="!profileLoading"
+        type="button"
+        class="profile__edit-profile-btn"
+        @click="openEditProfile"
+      >
+        編輯個人檔案
+      </button>
       <p v-if="profileLoadError" class="profile__error" role="alert">
         {{ profileLoadError }}
       </p>
@@ -70,6 +76,7 @@
           </button>
         </header>
         <div class="profile-settings__body">
+          <p v-if="email" class="profile-settings__email">{{ email }}</p>
           <button
             type="button"
             class="profile-settings__signout"
@@ -78,6 +85,86 @@
             登出
           </button>
         </div>
+      </div>
+    </Teleport>
+
+    <Teleport to="body">
+      <div
+        v-show="editProfileOpen"
+        id="profile-edit-dialog"
+        class="profile-edit"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="profile-edit-title"
+      >
+        <header class="profile-edit__header">
+          <h2 id="profile-edit-title" class="profile-edit__title">
+            編輯個人檔案
+          </h2>
+          <button
+            type="button"
+            class="profile-edit__close"
+            aria-label="關閉"
+            :disabled="profileSavePending"
+            @click="closeEditProfile"
+          >
+            <X :size="22" aria-hidden="true" />
+          </button>
+        </header>
+        <form
+          class="profile-edit__form"
+          @submit.prevent="saveEditProfile"
+        >
+          <label class="profile-edit__field">
+            <span class="profile-edit__label">使用者名稱</span>
+            <input
+              v-model="editDisplayName"
+              class="profile-edit__input"
+              type="text"
+              name="display_name"
+              autocomplete="nickname"
+              :disabled="profileSavePending"
+            />
+          </label>
+          <label class="profile-edit__field">
+            <span class="profile-edit__label">城市</span>
+            <input
+              v-model="editCity"
+              class="profile-edit__input"
+              type="text"
+              name="city"
+              autocomplete="address-level2"
+              :disabled="profileSavePending"
+            />
+          </label>
+          <label class="profile-edit__field">
+            <span class="profile-edit__label">國家／地區</span>
+            <input
+              v-model="editCountry"
+              class="profile-edit__input"
+              type="text"
+              name="country"
+              autocomplete="country-name"
+              :disabled="profileSavePending"
+            />
+          </label>
+          <p
+            v-if="profileEditFormError"
+            class="profile-edit__error"
+            role="alert"
+          >
+            {{ profileEditFormError }}
+          </p>
+          <div class="profile-edit__footer">
+            <button
+              type="submit"
+              class="profile-edit__save"
+              :disabled="profileSavePending"
+            >
+              {{ profileSavePending ? "儲存中…" : "儲存" }}
+            </button>
+          </div>
+        </form>
       </div>
     </Teleport>
 
@@ -184,8 +271,9 @@
 </template>
 
 <script setup lang="ts">
-import { User } from "lucide-vue-next"
+import { User, X } from "lucide-vue-next"
 import type { JwtPayload } from "@supabase/supabase-js"
+import { resolveUserDisplayName } from "~/utils/resolveUserDisplayName"
 
 type TripRow = {
   id: string
@@ -210,13 +298,20 @@ const cropImageObjectUrl = ref<string | null>(null)
 const avatarFileInputRef = ref<HTMLInputElement | null>(null)
 const avatarUploading = ref(false)
 
+const editProfileOpen = ref(false)
+const editDisplayName = ref("")
+const editCity = ref("")
+const editCountry = ref("")
+const profileSavePending = ref(false)
+const profileEditFormError = ref<string | null>(null)
+
 const profile = ref<ProfileRow | null>(null)
 const profileLoading = ref(true)
 const profileLoadError = ref<string | null>(null)
 
 const supabase = useSupabaseClient()
 const userClaims = useSupabaseUser()
-const { setProfileAvatarUrl } = useNavProfileAvatar()
+const { setProfileAvatarUrl, setProfileDisplayNameFromDb } = useNavProfileAvatar()
 
 const userId = computed(
   () => (userClaims.value as JwtPayload | null)?.sub ?? null,
@@ -242,15 +337,13 @@ const resolvedAvatarUrl = computed(() => {
   return fromGoogle ?? null
 })
 
-const displayName = computed(() => {
-  const fromProfile = profile.value?.display_name?.trim()
-  if (fromProfile) {
-    return fromProfile
-  }
-  const m = userMeta.value
-  const fromOAuth = (m?.full_name ?? m?.name)?.trim()
-  return fromOAuth || "使用者"
-})
+const displayName = computed(() =>
+  resolveUserDisplayName({
+    profileDisplayName: profile.value?.display_name,
+    email: email.value,
+    userMetadata: (userMeta.value ?? null) as Record<string, unknown> | null,
+  }),
+)
 
 const locationLine = computed(() => {
   const city = profile.value?.city?.trim()
@@ -377,6 +470,7 @@ onMounted(async () => {
 
   if (profile.value) {
     setProfileAvatarUrl(profile.value.avatar_url ?? null)
+    setProfileDisplayNameFromDb(profile.value.display_name ?? null)
   }
 
   profileLoading.value = false
@@ -389,6 +483,51 @@ watch(avatarModalOpen, (open) => {
     cropImageObjectUrl.value = null
   }
 })
+
+function openEditProfile() {
+  if (!profile.value) return
+  profileEditFormError.value = null
+  editDisplayName.value = profile.value.display_name ?? ""
+  editCity.value = profile.value.city ?? ""
+  editCountry.value = profile.value.country ?? ""
+  editProfileOpen.value = true
+}
+
+function closeEditProfile() {
+  if (profileSavePending.value) return
+  editProfileOpen.value = false
+  profileEditFormError.value = null
+}
+
+async function saveEditProfile() {
+  const uid = userId.value
+  if (!uid) return
+  profileSavePending.value = true
+  profileEditFormError.value = null
+
+  const dn = editDisplayName.value.trim()
+  const display_name = dn.length > 0 ? dn : null
+  const city = editCity.value.trim() || null
+  const country = editCountry.value.trim() || null
+
+  const { error: upErr } = await supabase
+    .from("profiles")
+    .update({ display_name, city, country })
+    .eq("id", uid)
+
+  if (upErr) {
+    profileEditFormError.value = upErr.message
+    profileSavePending.value = false
+    return
+  }
+
+  if (profile.value) {
+    profile.value = { ...profile.value, display_name, city, country }
+  }
+  setProfileDisplayNameFromDb(display_name)
+  editProfileOpen.value = false
+  profileSavePending.value = false
+}
 
 function openAvatarFilePicker() {
   avatarFileInputRef.value?.click()
@@ -470,6 +609,7 @@ async function onAvatarCropConfirm(blob: Blob) {
 
   profile.value = upserted as ProfileRow
   setProfileAvatarUrl(publicUrl)
+  setProfileDisplayNameFromDb(upserted.display_name ?? null)
 
   if (cropImageObjectUrl.value) {
     URL.revokeObjectURL(cropImageObjectUrl.value)
@@ -592,12 +732,21 @@ function formatDate(isoDate: string) {
     font-size: 1.25rem;
     font-weight: 600;
     color: var(--color-text);
+
+    &--loading {
+      font-weight: 500;
+      color: var(--color-text-muted);
+    }
   }
 
   &__location {
     margin: 0;
     font-size: 0.9375rem;
     color: var(--color-text-muted);
+
+    &--loading {
+      color: var(--color-text-muted);
+    }
   }
 
   &__trip-count {
@@ -607,10 +756,34 @@ function formatDate(isoDate: string) {
     color: var(--color-text);
   }
 
-  &__meta {
-    margin: 0.35rem 0 0;
+  &__edit-profile-btn {
+    margin-top: 0.65rem;
+    padding: 0.45rem 1.35rem;
+    width: 100%;
+    max-width: 16rem;
+    font: inherit;
     font-size: 0.875rem;
-    color: var(--color-text-muted);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: var(--color-text);
+    background: transparent;
+    border: 1px solid var(--color-border-strong);
+    border-radius: 0.5rem;
+    cursor: pointer;
+    transition:
+      background 0.12s ease,
+      border-color 0.12s ease,
+      opacity 0.12s ease;
+
+    &:hover {
+      background: rgba(0, 0, 0, 0.03);
+      border-color: var(--color-text-muted);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--color-accent);
+      outline-offset: 2px;
+    }
   }
 
   &__file-input {
@@ -747,7 +920,7 @@ function formatDate(isoDate: string) {
 .profile-settings {
   position: fixed;
   inset: 0;
-  z-index: 100;
+  z-index: 99;
   display: flex;
   flex-direction: column;
   background: var(--color-surface);
@@ -768,6 +941,17 @@ function formatDate(isoDate: string) {
   flex: 1;
   padding: 1rem 1.25rem;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.profile-settings__email {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: var(--color-text-muted);
+  word-break: break-all;
 }
 
 .profile-settings__title {
@@ -817,6 +1001,150 @@ function formatDate(isoDate: string) {
 
   &:focus-visible {
     outline: 2px solid var(--color-danger);
+    outline-offset: 2px;
+  }
+}
+
+.profile-edit {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-surface);
+  color: var(--color-text);
+  overflow: hidden;
+}
+
+.profile-edit__header {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: calc(0.65rem + env(safe-area-inset-top, 0px)) 1rem 0.65rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.profile-edit__title {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.profile-edit__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
+  font: inherit;
+  color: var(--color-text);
+  background: transparent;
+  border: none;
+  border-radius: 0.375rem;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    background: var(--color-bg);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+}
+
+.profile-edit__form {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-height: 0;
+  padding: 1rem 1.25rem;
+  padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+  overflow-y: auto;
+}
+
+.profile-edit__field {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.4rem;
+}
+
+.profile-edit__label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.profile-edit__input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 0.55rem 0.7rem;
+  font: inherit;
+  font-size: 1rem;
+  color: var(--color-text);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 0.375rem;
+
+  &:focus {
+    outline: none;
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.12);
+  }
+
+  &:disabled {
+    opacity: 0.65;
+  }
+}
+
+.profile-edit__error {
+  margin: 0;
+  padding: 0.6rem 0.75rem;
+  font-size: 0.875rem;
+  color: var(--color-danger);
+  background: var(--color-danger-bg);
+  border-radius: 0.375rem;
+}
+
+.profile-edit__footer {
+  margin-top: auto;
+  padding-top: 0.5rem;
+}
+
+.profile-edit__save {
+  display: block;
+  width: 100%;
+  padding: 0.7rem 1rem;
+  font: inherit;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--color-accent);
+  border: 1px solid var(--color-accent);
+  border-radius: 0.5rem;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    background: var(--color-accent-hover);
+  }
+
+  &:disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-accent);
     outline-offset: 2px;
   }
 }

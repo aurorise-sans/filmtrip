@@ -40,6 +40,7 @@
         class="layout-default__appbar-btn"
         :class="{ 'layout-default__appbar-btn--active': homeActive }"
         to="/"
+        @click.capture="onHomeNavClick"
       >
         <Home :size="24" aria-hidden="true" />
         <span class="layout-default__appbar-sr">首頁</span>
@@ -90,6 +91,16 @@ const profileSettingsOpen = useState("profile-settings-open", () => false)
 const isProfilePage = computed(() => route.path === "/profile")
 
 const { navAvatarDisplayUrl, loadProfileAvatarFromDb } = useNavProfileAvatar()
+
+const feedHomeReshuffleTick = useState("feed-home-reshuffle-tick", () => 0)
+
+function onHomeNavClick(e: MouseEvent) {
+  if (route.path !== "/") {
+    return
+  }
+  e.preventDefault()
+  feedHomeReshuffleTick.value += 1
+}
 
 const homeActive = computed(() => route.path === "/")
 const mapActive = computed(() => route.path === "/map")

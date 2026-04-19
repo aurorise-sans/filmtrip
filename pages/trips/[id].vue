@@ -53,19 +53,6 @@
           </div>
         </div>
 
-        <figure
-          v-if="pageData.trip.cover_image_url && !isEditing"
-          class="trip-detail__cover"
-        >
-          <img
-            class="trip-detail__cover-img"
-            :src="pageData.trip.cover_image_url"
-            :alt="`「${pageData.trip.name}」封面`"
-            loading="eager"
-            decoding="async"
-          />
-        </figure>
-
         <template v-if="!isEditing">
           <h1 class="trip-detail__title">{{ pageData.trip.name }}</h1>
           <p
@@ -207,73 +194,6 @@
               </label>
             </div>
           </div>
-
-          <ClientOnly>
-            <div class="trip-detail__cover-block">
-              <h2 class="trip-detail__section-heading">封面照片</h2>
-              <p class="trip-detail__cover-hint">
-                變更後請按下方「儲存」一併寫入資料庫與雲端封面。
-              </p>
-              <figure
-                v-if="editCoverDisplayUrl"
-                class="trip-detail__cover-figure"
-              >
-                <img
-                  class="trip-detail__cover-preview-img"
-                  :src="editCoverDisplayUrl"
-                  alt="封面預覽"
-                  loading="lazy"
-                  decoding="async"
-                />
-              </figure>
-              <p
-                v-else-if="coverRemovePending && pageData.trip.cover_image_url"
-                class="trip-detail__cover-removed-note"
-              >
-                將在儲存後移除封面
-              </p>
-              <input
-                ref="coverFileInputRef"
-                class="trip-detail__cover-input"
-                type="file"
-                accept="image/*"
-                tabindex="-1"
-                aria-hidden="true"
-                @change="onEditCoverFileSelected"
-              />
-              <div class="trip-detail__cover-actions">
-                <button
-                  type="button"
-                  class="trip-detail__cover-btn"
-                  :disabled="!userId || savePending || deletePending"
-                  @click="openCoverFilePicker"
-                >
-                  {{
-                    pendingCoverFile
-                      ? "更換封面"
-                      : pageData.trip.cover_image_url && !coverRemovePending
-                        ? "更換封面照片"
-                        : "選擇封面照片"
-                  }}
-                </button>
-                <button
-                  v-if="pendingCoverFile || (pageData.trip.cover_image_url && !coverRemovePending)"
-                  type="button"
-                  class="trip-detail__cover-clear"
-                  :disabled="savePending || deletePending"
-                  @click="clearCoverEditSelection"
-                >
-                  {{ pendingCoverFile ? "取消新封面" : "移除封面" }}
-                </button>
-              </div>
-              <CoverImageCropper
-                v-if="coverCropperOpen && coverCropSourceUrl"
-                :image-url="coverCropSourceUrl"
-                @confirm="onEditCoverCropConfirm"
-                @cancel="onEditCoverCropCancel"
-              />
-            </div>
-          </ClientOnly>
 
           <p v-if="editError" class="trip-detail__edit-error" role="alert">
             {{ editError }}
@@ -478,7 +398,6 @@ type TripDetail = {
   start_date: string
   end_date: string
   is_public: boolean
-  cover_image_url: string | null
 }
 
 type PhotoRow = {
@@ -520,7 +439,7 @@ const { data: pageData, pending, error, refresh } = await useAsyncData(
 
     const { data: trip, error: tripErr } = await supabase
       .from("trips")
-      .select("id, user_id, name, start_date, end_date, is_public, cover_image_url")
+      .select("id, user_id, name, start_date, end_date, is_public")
       .eq("id", tripId.value)
       .maybeSingle()
 
@@ -578,49 +497,10 @@ function openPhotoLightbox(index: number) {
   photoLightboxOpen.value = true
 }
 
-const coverFileInputRef = ref<HTMLInputElement | null>(null)
-const pendingCoverFile = ref<File | null>(null)
-const editCoverPreviewUrl = ref<string | null>(null)
-let editCoverPreviewRevoke: (() => void) | null = null
-const coverRemovePending = ref(false)
-
-const coverCropperOpen = ref(false)
-const coverCropSourceUrl = ref<string | null>(null)
-let coverCropSourceRevoke: (() => void) | null = null
-
-const editCoverDisplayUrl = computed(() => {
-  if (!pageData.value) return null
-  if (editCoverPreviewUrl.value) return editCoverPreviewUrl.value
-  if (coverRemovePending.value) return null
-  return pageData.value.trip.cover_image_url
-})
-
 function dateInputValue(iso: string) {
   const s = iso.trim()
   return s.length >= 10 ? s.slice(0, 10) : s
 }
-
-function revokeEditCoverPreview() {
-  if (editCoverPreviewRevoke) {
-    editCoverPreviewRevoke()
-    editCoverPreviewRevoke = null
-  }
-  editCoverPreviewUrl.value = null
-}
-
-function revokeCoverCropSource() {
-  if (coverCropSourceRevoke) {
-    coverCropSourceRevoke()
-    coverCropSourceRevoke = null
-  }
-  coverCropSourceUrl.value = null
-  coverCropperOpen.value = false
-}
-
-onBeforeUnmount(() => {
-  revokeEditCoverPreview()
-  revokeCoverCropSource()
-})
 
 const tripEditDirty = computed(() => {
   if (!pageData.value || !isEditing.value) return false
@@ -629,8 +509,6 @@ const tripEditDirty = computed(() => {
   if (editStartDate.value !== dateInputValue(t.start_date)) return true
   if (editEndDate.value !== dateInputValue(t.end_date)) return true
   if (editIsPublic.value !== t.is_public) return true
-  if (pendingCoverFile.value) return true
-  if (coverRemovePending.value && !!t.cover_image_url) return true
   return false
 })
 
@@ -651,11 +529,6 @@ function startEdit() {
   editIsPublic.value = t.is_public
   editError.value = ""
   photoDeleteError.value = ""
-  pendingCoverFile.value = null
-  coverRemovePending.value = false
-  revokeEditCoverPreview()
-  revokeCoverCropSource()
-  if (coverFileInputRef.value) coverFileInputRef.value.value = ""
   isEditing.value = true
 }
 
@@ -663,11 +536,6 @@ function resetEditSession() {
   editError.value = ""
   photoDeleteError.value = ""
   locationPickerPhoto.value = null
-  pendingCoverFile.value = null
-  coverRemovePending.value = false
-  revokeEditCoverPreview()
-  revokeCoverCropSource()
-  if (coverFileInputRef.value) coverFileInputRef.value.value = ""
 }
 
 function confirmDiscardTripEditIfNeeded(): boolean {
@@ -687,59 +555,6 @@ function completeEditing() {
   if (!confirmDiscardTripEditIfNeeded()) return
   resetEditSession()
   isEditing.value = false
-}
-
-function openCoverFilePicker() {
-  editError.value = ""
-  coverFileInputRef.value?.click()
-}
-
-function onEditCoverFileSelected(ev: Event) {
-  const input = ev.target as HTMLInputElement
-  const file = input.files?.[0]
-  input.value = ""
-  if (!file?.type.startsWith("image/")) return
-  revokeCoverCropSource()
-  if (pendingCoverFile.value) {
-    pendingCoverFile.value = null
-    revokeEditCoverPreview()
-  }
-  editError.value = ""
-  const url = URL.createObjectURL(file)
-  coverCropSourceUrl.value = url
-  coverCropSourceRevoke = () => URL.revokeObjectURL(url)
-  coverCropperOpen.value = true
-}
-
-function onEditCoverCropConfirm(blob: Blob) {
-  revokeCoverCropSource()
-  revokeEditCoverPreview()
-  const file = new File([blob], "cover.jpg", {
-    type: blob.type || "image/jpeg",
-  })
-  pendingCoverFile.value = file
-  coverRemovePending.value = false
-  editError.value = ""
-  const previewUrl = URL.createObjectURL(file)
-  editCoverPreviewUrl.value = previewUrl
-  editCoverPreviewRevoke = () => URL.revokeObjectURL(previewUrl)
-}
-
-function onEditCoverCropCancel() {
-  revokeCoverCropSource()
-}
-
-function clearCoverEditSelection() {
-  editError.value = ""
-  revokeCoverCropSource()
-  if (pendingCoverFile.value) {
-    pendingCoverFile.value = null
-    revokeEditCoverPreview()
-    return
-  }
-  if (pageData.value?.trip.cover_image_url) {
-    coverRemovePending.value = true
-  }
 }
 
 async function saveTripInfo() {
@@ -779,29 +594,6 @@ async function saveTripInfo() {
       .eq("id", tripId.value)
 
     if (updErr) throw new Error(updErr.message)
-
-    if (pendingCoverFile.value) {
-      await uploadTripCoverAndUpdateRow(supabase, {
-        userId: userId.value,
-        tripId: tripId.value,
-        file: pendingCoverFile.value,
-      })
-    } else if (
-      coverRemovePending.value &&
-      pageData.value.trip.cover_image_url
-    ) {
-      const coverPath = `covers/${userId.value}/${tripId.value}.jpg`
-      await supabase.storage.from("photos").remove([coverPath])
-      const { error: clearErr } = await supabase
-        .from("trips")
-        .update({ cover_image_url: null })
-        .eq("id", tripId.value)
-      if (clearErr) throw new Error(clearErr.message)
-    }
-
-    pendingCoverFile.value = null
-    coverRemovePending.value = false
-    revokeEditCoverPreview()
 
     await refresh()
     await refreshNuxtData("profile-trips")
@@ -862,19 +654,6 @@ async function onDeleteTrip() {
         editError.value = removePhotosErr.message
         return
       }
-    }
-  }
-
-  const ownerId = pageData.value?.trip.user_id
-  if (ownerId) {
-    const coverPath = `covers/${ownerId}/${tripId.value}.jpg`
-    const { error: removeCoverErr } = await supabase.storage
-      .from("photos")
-      .remove([coverPath])
-    if (removeCoverErr) {
-      deletePending.value = false
-      editError.value = removeCoverErr.message
-      return
     }
   }
 
@@ -1237,87 +1016,6 @@ function formatDate(isoDate: string) {
     color: #fff;
   }
 
-  &__section-heading {
-    margin: 0 0 0.5rem;
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--color-text);
-  }
-
-  &__cover-block {
-    margin-top: 1.25rem;
-    padding-top: 1.25rem;
-    border-top: 1px solid var(--color-border);
-    margin-bottom: 0;
-  }
-
-  &__cover-hint {
-    margin: 0 0 0.75rem;
-    font-size: 0.875rem;
-    line-height: 1.45;
-    color: var(--color-text-muted);
-  }
-
-  &__cover-figure {
-    margin: 0 0 0.75rem;
-    border-radius: 0.75rem;
-    overflow: hidden;
-    border: 1px solid var(--color-border);
-    background: var(--color-border);
-  }
-
-  &__cover-preview-img {
-    display: block;
-    width: 100%;
-    max-height: 14rem;
-    object-fit: cover;
-    vertical-align: middle;
-  }
-
-  &__cover-removed-note {
-    margin: 0 0 0.75rem;
-    font-size: 0.875rem;
-    color: var(--color-text-muted);
-  }
-
-  &__cover-btn {
-    padding: 0.45rem 0.9rem;
-    font: inherit;
-    font-size: 0.875rem;
-    font-weight: 500;
-    color: #fff;
-    background: var(--color-accent);
-    border: none;
-    border-radius: 0.5rem;
-    cursor: pointer;
-    transition: filter 0.15s ease;
-
-    &:hover:not(:disabled) {
-      filter: brightness(1.05);
-    }
-
-    &:disabled {
-      opacity: 0.65;
-      cursor: not-allowed;
-    }
-  }
-
-  &__cover-clear {
-    padding: 0.45rem 0.75rem;
-    font: inherit;
-    font-size: 0.875rem;
-    color: var(--color-text-muted);
-    background: transparent;
-    border: 1px solid var(--color-border);
-    border-radius: 0.5rem;
-    cursor: pointer;
-
-    &:hover {
-      color: var(--color-text);
-      border-color: var(--color-text-muted);
-    }
-  }
-
   &__edit-actions {
     display: flex;
     flex-wrap: wrap;
@@ -1430,41 +1128,6 @@ function formatDate(isoDate: string) {
     &:hover {
       text-decoration: underline;
     }
-  }
-
-  &__cover {
-    margin: 0 0 1rem;
-    border-radius: 0.75rem;
-    overflow: hidden;
-    border: 1px solid var(--color-border);
-    background: var(--color-surface);
-  }
-
-  &__cover-img {
-    display: block;
-    width: 100%;
-    max-height: 18rem;
-    object-fit: cover;
-    vertical-align: middle;
-  }
-
-  &__cover-input {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-    border: 0;
-  }
-
-  &__cover-actions {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.5rem;
   }
 
   &__title {

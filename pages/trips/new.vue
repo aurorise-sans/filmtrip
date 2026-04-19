@@ -3,7 +3,7 @@
     <header class="trip-new__header">
       <h1 class="trip-new__title">建立旅程</h1>
       <p v-if="step === 1" class="trip-new__subtitle">
-        填寫旅程資訊與封面後，下一步選擇照片；全部確認後才會建立旅程並上傳。
+        填寫旅程資訊後，下一步選擇照片；全部確認後才會建立旅程並上傳。
       </p>
       <p v-else class="trip-new__subtitle">
         照片僅在本機預覽，按下「完成」後會建立旅程並一次上傳。
@@ -122,57 +122,6 @@
         </div>
       </div>
 
-      <ClientOnly>
-        <div class="trip-new__cover-block">
-          <h2 class="trip-new__section-heading">封面照片</h2>
-          <p class="trip-new__cover-hint">
-            選一張代表此旅程的圖片（可選，不需 GPS）。送出建立時才會上傳。
-          </p>
-          <figure v-if="coverPreviewUrl" class="trip-new__cover-figure">
-            <img
-              class="trip-new__cover-img"
-              :src="coverPreviewUrl"
-              alt="旅程封面預覽"
-              loading="lazy"
-              decoding="async"
-            />
-          </figure>
-          <input
-            ref="coverFileInputRef"
-            class="trip-new__cover-input"
-            type="file"
-            accept="image/*"
-            tabindex="-1"
-            aria-hidden="true"
-            @change="onCoverFileSelected"
-          />
-          <div class="trip-new__cover-actions">
-            <button
-              type="button"
-              class="trip-new__cover-btn"
-              :disabled="!userId"
-              @click="openCoverFilePicker"
-            >
-              {{ coverFile ? "更換封面" : "選擇封面照片" }}
-            </button>
-            <button
-              v-if="coverFile"
-              type="button"
-              class="trip-new__cover-clear"
-              @click="clearCoverSelection"
-            >
-              移除封面
-            </button>
-          </div>
-          <CoverImageCropper
-            v-if="coverCropperOpen && coverCropSourceUrl"
-            :image-url="coverCropSourceUrl"
-            @confirm="onCoverCropConfirm"
-            @cancel="onCoverCropCancel"
-          />
-        </div>
-      </ClientOnly>
-
       <p v-if="errorMessage" class="trip-new__error" role="alert">
         {{ errorMessage }}
       </p>
@@ -246,15 +195,6 @@ const errorMessage = ref("")
 const step2Error = ref("")
 const finishing = ref(false)
 
-const coverFile = ref<File | null>(null)
-const coverPreviewUrl = ref<string | null>(null)
-let coverPreviewRevoke: (() => void) | null = null
-
-const coverCropperOpen = ref(false)
-const coverCropSourceUrl = ref<string | null>(null)
-let coverCropSourceRevoke: (() => void) | null = null
-
-const coverFileInputRef = ref<HTMLInputElement | null>(null)
 const localPickerRef = ref<{
   validateLocations: () => boolean
   getPendingItems: () => Promise<readonly LocalPendingPhotoItem[]>
@@ -265,61 +205,6 @@ const userId = computed(() => {
   const claims = userClaims.value as JwtPayload | null
   return claims?.sub ?? null
 })
-
-function revokeCoverPreview() {
-  if (coverPreviewRevoke) {
-    coverPreviewRevoke()
-    coverPreviewRevoke = null
-  }
-  coverPreviewUrl.value = null
-}
-
-function revokeCoverCropSource() {
-  if (coverCropSourceRevoke) {
-    coverCropSourceRevoke()
-    coverCropSourceRevoke = null
-  }
-  coverCropSourceUrl.value = null
-  coverCropperOpen.value = false
-}
-
-function openCoverFilePicker() {
-  coverFileInputRef.value?.click()
-}
-
-function onCoverFileSelected(ev: Event) {
-  const input = ev.target as HTMLInputElement
-  const file = input.files?.[0]
-  input.value = ""
-  if (!file?.type.startsWith("image/")) return
-  revokeCoverCropSource()
-  const url = URL.createObjectURL(file)
-  coverCropSourceUrl.value = url
-  coverCropSourceRevoke = () => URL.revokeObjectURL(url)
-  coverCropperOpen.value = true
-}
-
-function onCoverCropConfirm(blob: Blob) {
-  revokeCoverCropSource()
-  revokeCoverPreview()
-  const file = new File([blob], "cover.jpg", {
-    type: blob.type || "image/jpeg",
-  })
-  coverFile.value = file
-  const previewUrl = URL.createObjectURL(file)
-  coverPreviewUrl.value = previewUrl
-  coverPreviewRevoke = () => URL.revokeObjectURL(previewUrl)
-}
-
-function onCoverCropCancel() {
-  revokeCoverCropSource()
-}
-
-function clearCoverSelection() {
-  coverFile.value = null
-  revokeCoverPreview()
-  revokeCoverCropSource()
-}
 
 function validateStep1Fields(): string | null {
   const trimmed = name.value.trim()
@@ -407,7 +292,6 @@ async function onComplete() {
 
   let tripId: string | null = null
   const uploadedPhotoPaths: string[] = []
-  let coverStoragePath: string | null = null
 
   try {
     const trimmed = name.value.trim()
@@ -427,17 +311,6 @@ async function onComplete() {
     if (!tripRow?.id) throw new Error("建立成功但無法取得旅程編號。")
 
     tripId = tripRow.id
-    coverStoragePath = `covers/${uploadUserId}/${tripId}.jpg`
-
-    if (coverFile.value) {
-      await uploadTripCoverAndUpdateRow(supabase, {
-        userId: uploadUserId,
-        tripId,
-        file: coverFile.value,
-      })
-    } else {
-      coverStoragePath = null
-    }
 
     const inserts: {
       trip_id: string
@@ -485,9 +358,6 @@ async function onComplete() {
     if (uploadedPhotoPaths.length) {
       await supabase.storage.from("photos").remove(uploadedPhotoPaths)
     }
-    if (coverStoragePath && tripId) {
-      await supabase.storage.from("photos").remove([coverStoragePath])
-    }
     if (tripId) {
       await supabase.from("trips").delete().eq("id", tripId)
     }
@@ -497,11 +367,6 @@ async function onComplete() {
     finishing.value = false
   }
 }
-
-onBeforeUnmount(() => {
-  revokeCoverPreview()
-  revokeCoverCropSource()
-})
 
 useHead({
   title: "建立旅程 | Filmtrip",
@@ -663,99 +528,6 @@ useHead({
     margin: 0;
     font-size: 0.875rem;
     color: var(--color-text-muted);
-  }
-
-  &__section-heading {
-    margin: 0 0 0.5rem;
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--color-text);
-  }
-
-  &__cover-block {
-    margin-bottom: 1.25rem;
-    padding-bottom: 1.25rem;
-    border-bottom: 1px solid var(--color-border);
-  }
-
-  &__cover-hint {
-    margin: 0 0 0.75rem;
-    font-size: 0.875rem;
-    line-height: 1.45;
-    color: var(--color-text-muted);
-  }
-
-  &__cover-figure {
-    margin: 0 0 0.75rem;
-    border-radius: 0.75rem;
-    overflow: hidden;
-    border: 1px solid var(--color-border);
-    background: var(--color-border);
-  }
-
-  &__cover-img {
-    display: block;
-    width: 100%;
-    max-height: 14rem;
-    object-fit: cover;
-    vertical-align: middle;
-  }
-
-  &__cover-input {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-    border: 0;
-  }
-
-  &__cover-actions {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.5rem;
-  }
-
-  &__cover-btn {
-    padding: 0.45rem 0.9rem;
-    font: inherit;
-    font-size: 0.875rem;
-    font-weight: 500;
-    color: #fff;
-    background: var(--color-accent);
-    border: none;
-    border-radius: 0.5rem;
-    cursor: pointer;
-    transition: filter 0.15s ease;
-
-    &:hover:not(:disabled) {
-      filter: brightness(1.05);
-    }
-
-    &:disabled {
-      opacity: 0.65;
-      cursor: not-allowed;
-    }
-  }
-
-  &__cover-clear {
-    padding: 0.45rem 0.75rem;
-    font: inherit;
-    font-size: 0.875rem;
-    color: var(--color-text-muted);
-    background: transparent;
-    border: 1px solid var(--color-border);
-    border-radius: 0.5rem;
-    cursor: pointer;
-
-    &:hover {
-      color: var(--color-text);
-      border-color: var(--color-text-muted);
-    }
   }
 
   &__field {

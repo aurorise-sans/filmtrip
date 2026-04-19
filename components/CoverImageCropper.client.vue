@@ -96,7 +96,7 @@ function onConfirm() {
       if (blob) emit("confirm", blob)
     },
     "image/jpeg",
-    0.92,
+    0.78,
   )
 }
 </script>

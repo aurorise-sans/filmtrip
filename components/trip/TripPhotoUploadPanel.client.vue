@@ -325,7 +325,6 @@ async function onFilesSelected(event: Event) {
 
   for (const file of files) {
     const key = crypto.randomUUID()
-    const previewUrl = URL.createObjectURL(file)
     let lat: number | null = null
     let lng: number | null = null
     try {
@@ -348,8 +347,19 @@ async function onFilesSelected(event: Event) {
       /* 無 EXIF 或無法解析 */
     }
 
+    const compressed = await compressImage(file)
+    const previewUrl = URL.createObjectURL(compressed)
+
     const hasGps = lat !== null && lng !== null
-    next.push({ key, file, previewUrl, lat, lng, hasGps, placeName: "" })
+    next.push({
+      key,
+      file: compressed,
+      previewUrl,
+      lat,
+      lng,
+      hasGps,
+      placeName: "",
+    })
   }
 
   const gpsItems = next.filter(

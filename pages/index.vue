@@ -304,7 +304,7 @@ const fetchError = computed(() => loadError.value?.message ?? "")
   flex-wrap: nowrap;
   align-items: stretch;
   gap: 0.45rem;
-  height: 280px;
+  height: 200px;
   overflow-x: auto;
   overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
@@ -316,6 +316,8 @@ const fetchError = computed(() => loadError.value?.message ?? "")
   margin: 0;
   display: flex;
   align-items: stretch;
+  border-radius: 8px;
+  overflow: hidden;
 }
 
 .feed-card__strip-img {

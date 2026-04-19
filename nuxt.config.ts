@@ -28,7 +28,7 @@ export default defineNuxtConfig({
       login: "/login",
       callback: "/confirm",
       // 未登入仍可瀏覽 Feed（/）與地圖（/map）；其餘頁面需登入（可依需求調整）
-      exclude: ["/", "/map"],
+      exclude: ["/", "/map", "/login"],
     },
     cookieOptions: {
       maxAge: 60 * 60 * 8,

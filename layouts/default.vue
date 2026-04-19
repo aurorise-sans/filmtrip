@@ -1,24 +1,38 @@
 <template>
   <div class="layout-default">
     <header class="layout-default__header">
+      <div class="layout-default__header-start" aria-hidden="true" />
       <NuxtLink class="layout-default__brand" to="/">Filmtrip</NuxtLink>
-      <button
-        v-if="isProfilePage"
-        type="button"
-        class="layout-default__header-settings"
-        aria-label="設定"
-        aria-haspopup="dialog"
-        :aria-expanded="profileSettingsOpen"
-        aria-controls="profile-settings-dialog"
-        @click="profileSettingsOpen = true"
-      >
-        <Settings :size="22" aria-hidden="true" />
-      </button>
+      <div class="layout-default__header-end">
+        <NuxtLink
+          v-if="!user"
+          class="layout-default__header-login"
+          to="/login"
+        >
+          登入
+        </NuxtLink>
+        <button
+          v-else-if="isProfilePage"
+          type="button"
+          class="layout-default__header-settings"
+          aria-label="設定"
+          aria-haspopup="dialog"
+          :aria-expanded="profileSettingsOpen"
+          aria-controls="profile-settings-dialog"
+          @click="profileSettingsOpen = true"
+        >
+          <Settings :size="22" aria-hidden="true" />
+        </button>
+      </div>
     </header>
-    <main class="layout-default__main">
+    <main
+      class="layout-default__main"
+      :class="{ 'layout-default__main--with-appbar': user }"
+    >
       <slot />
     </main>
     <nav
+      v-if="user"
       class="layout-default__appbar"
       aria-label="主要操作"
     >
@@ -118,9 +132,9 @@ watch(
     left: 0;
     right: 0;
     z-index: 50;
-    display: flex;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
     align-items: center;
-    justify-content: center;
     height: calc(52px + env(safe-area-inset-top, 0px));
     padding: env(safe-area-inset-top, 0px) 1.25rem 0;
     border-bottom: 1px solid rgba(0, 0, 0, 0.06);
@@ -128,24 +142,54 @@ watch(
     box-sizing: border-box;
   }
 
+  &__header-start {
+    justify-self: start;
+    min-width: 0;
+  }
+
+  &__header-end {
+    justify-self: end;
+    min-width: 0;
+  }
+
+  &__header-login {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    padding: 0.35rem 0.5rem;
+    margin-right: -0.25rem;
+    font: inherit;
+    font-size: 0.9375rem;
+    font-weight: 500;
+    color: var(--color-accent);
+    text-decoration: none;
+    border-radius: 0.375rem;
+
+    &:hover {
+      opacity: 0.85;
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--color-accent);
+      outline-offset: 2px;
+    }
+  }
+
   &__header-settings {
-    position: absolute;
-    top: calc(env(safe-area-inset-top, 0px) + 26px);
-    right: 1rem;
-    z-index: 1;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     width: 44px;
     height: 44px;
     padding: 0;
+    margin-right: -0.25rem;
     font: inherit;
     color: var(--color-text);
     background: transparent;
     border: none;
     border-radius: 0.375rem;
     cursor: pointer;
-    transform: translateY(-50%);
 
     &:hover {
       opacity: 0.85;
@@ -174,11 +218,14 @@ watch(
     flex: 1;
     /* 與 Header 同高：52px 列 + 頂部 safe-area */
     padding-top: calc(52px + env(safe-area-inset-top, 0px));
+    box-sizing: border-box;
+  }
+
+  &__main--with-appbar {
     /* Navbar：上內距 + 按鈕列 + 下內距（含底部安全區） */
     padding-bottom: calc(
       0.5rem + 44px + 0.5rem + env(safe-area-inset-bottom, 0px)
     );
-    box-sizing: border-box;
   }
 
   &__appbar {

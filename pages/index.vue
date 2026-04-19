@@ -153,6 +153,7 @@ const { data: trips, pending, error: loadError } = await useAsyncData(
     const tripsData = (tripRows ?? []) as FeedTripRow[]
     const userIds = [...new Set(tripsData.map((t) => t.user_id))]
 
+    // PostgREST 無 trips→profiles 外鍵時無法在單一 select 內 embed；改批次讀 profiles。
     let profileById = new Map<string, ProfileRow>()
     if (userIds.length) {
       const { data: profileRows, error: profileErr } = await supabase

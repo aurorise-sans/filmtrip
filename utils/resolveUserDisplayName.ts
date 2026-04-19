@@ -18,7 +18,7 @@ export type ResolveUserDisplayNameInput = {
 
 /**
  * 顯示名稱後援順序：
- * profiles.display_name → user_metadata.full_name → user_metadata.name
+ * profiles.display_name → user_metadata.full_name / name / nickname / preferred_username
  * → email @ 前綴 →「使用者」
  */
 export function resolveUserDisplayName(
@@ -33,6 +33,10 @@ export function resolveUserDisplayName(
     if (typeof full === "string" && full.trim()) return full.trim()
     const name = meta.name
     if (typeof name === "string" && name.trim()) return name.trim()
+    const nick = meta.nickname
+    if (typeof nick === "string" && nick.trim()) return nick.trim()
+    const pref = meta.preferred_username
+    if (typeof pref === "string" && pref.trim()) return pref.trim()
   }
 
   const local = emailLocalPart(input.email)

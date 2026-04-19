@@ -834,10 +834,48 @@ async function onDeleteTrip() {
   deletePending.value = true
   editError.value = ""
 
+  const { data: photoRows, error: photoRowsErr } = await supabase
+    .from("photos")
+    .select("image_url")
+    .eq("trip_id", tripId.value)
+
+  if (photoRowsErr) {
+    deletePending.value = false
+    editError.value = photoRowsErr.message
+    return
+  }
+
+  if (photoRows?.length) {
+    const paths = photoRows
+      .map((p) =>
+        p.image_url
+          ? storageObjectPathFromPublicImageUrl(p.image_url)
+          : null,
+      )
+      .filter((p): p is string => p !== null)
+    if (paths.length) {
+      const { error: removePhotosErr } = await supabase.storage
+        .from("photos")
+        .remove(paths)
+      if (removePhotosErr) {
+        deletePending.value = false
+        editError.value = removePhotosErr.message
+        return
+      }
+    }
+  }
+
   const ownerId = pageData.value?.trip.user_id
   if (ownerId) {
     const coverPath = `covers/${ownerId}/${tripId.value}.jpg`
-    await supabase.storage.from("photos").remove([coverPath])
+    const { error: removeCoverErr } = await supabase.storage
+      .from("photos")
+      .remove([coverPath])
+    if (removeCoverErr) {
+      deletePending.value = false
+      editError.value = removeCoverErr.message
+      return
+    }
   }
 
   const { error: photosErr } = await supabase

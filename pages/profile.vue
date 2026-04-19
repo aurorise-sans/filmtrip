@@ -251,15 +251,57 @@
         尚無旅程，先建立一筆吧。
       </p>
       <ul v-else class="profile__list">
-        <li v-for="trip in tripsList" :key="trip.id">
-          <NuxtLink class="profile__trip" :to="`/trips/${trip.id}`">
-            <span class="profile__trip-name">{{ trip.name }}</span>
-            <span class="profile__trip-dates">
-              <time :datetime="trip.start_date">{{ formatDate(trip.start_date) }}</time>
-              <span class="profile__trip-sep" aria-hidden="true">—</span>
-              <time :datetime="trip.end_date">{{ formatDate(trip.end_date) }}</time>
-            </span>
-          </NuxtLink>
+        <li
+          v-for="trip in tripsList"
+          :key="trip.id"
+          class="profile__trip-card"
+        >
+          <div class="profile__trip-card-head">
+            <div class="profile__trip-card-head-main">
+              <p class="profile__trip-card-name">
+                {{ trip.name }}
+              </p>
+              <p class="profile__trip-card-dates">
+                <time :datetime="trip.start_date">{{ formatDate(trip.start_date) }}</time>
+                <span class="profile__trip-card-date-sep" aria-hidden="true">—</span>
+                <time :datetime="trip.end_date">{{ formatDate(trip.end_date) }}</time>
+              </p>
+            </div>
+            <NuxtLink
+              class="profile__trip-card-more"
+              :to="`/trips/${trip.id}`"
+            >
+              查看更多
+            </NuxtLink>
+          </div>
+          <div class="profile__trip-card-strip-wrap">
+            <ul
+              v-if="sortedPhotos(trip).length"
+              class="profile__trip-card-strip"
+              role="list"
+              aria-label="旅程照片"
+            >
+              <li
+                v-for="photo in sortedPhotos(trip)"
+                :key="photo.id"
+                class="profile__trip-card-strip-item"
+              >
+                <img
+                  class="profile__trip-card-strip-img"
+                  :src="photo.image_url"
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                >
+              </li>
+            </ul>
+            <p
+              v-else
+              class="profile__trip-card-strip-empty"
+            >
+              尚無照片
+            </p>
+          </div>
         </li>
       </ul>
     </section>
@@ -275,12 +317,19 @@ import { User, X } from "lucide-vue-next"
 import type { JwtPayload } from "@supabase/supabase-js"
 import { resolveUserDisplayName } from "~/utils/resolveUserDisplayName"
 
+type TripPhotoRow = {
+  id: string
+  image_url: string
+  created_at: string
+}
+
 type TripRow = {
   id: string
   name: string
   start_date: string
   end_date: string
   created_at: string
+  photos: TripPhotoRow[] | null
 }
 
 type ProfileRow = {
@@ -368,7 +417,9 @@ const { data: trips, error, pending } = await useAsyncData(
     }
     const { data, error: qErr } = await supabase
       .from("trips")
-      .select("id, name, start_date, end_date, created_at")
+      .select(
+        "id, name, start_date, end_date, created_at, photos(id, image_url, created_at)",
+      )
       .eq("user_id", userId.value)
       .order("created_at", { ascending: false })
     if (qErr) {
@@ -381,6 +432,15 @@ const { data: trips, error, pending } = await useAsyncData(
   },
 )
 const tripsList = computed(() => trips.value ?? [])
+
+function sortedPhotos(trip: TripRow): TripPhotoRow[] {
+  const photos = trip.photos
+  if (!photos?.length) return []
+  return [...photos].sort(
+    (a, b) =>
+      new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+  )
+}
 const fetchError = computed(() => error.value?.message ?? null)
 
 const tripCountLabel = computed(() => `${tripsList.value.length} 筆旅程`)
@@ -848,51 +908,134 @@ function formatDate(isoDate: string) {
     margin: 0;
     padding: 0;
     list-style: none;
-    border: 1px solid var(--color-border);
-    border-radius: 0.5rem;
-    background: var(--color-surface);
-    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
   }
 
-  &__trip {
+  &__trip-card {
+    border-radius: 0.75rem;
+    border: 1px solid var(--color-border);
+    background: var(--color-surface);
+    overflow: hidden;
+    box-shadow: 0 2px 12px rgba(15, 23, 42, 0.06);
+  }
+
+  &__trip-card-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.85rem 1rem;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  &__trip-card-head-main {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
     gap: 0.35rem;
-    padding: 0.85rem 1rem;
-    color: inherit;
-    text-decoration: none;
-    border-bottom: 1px solid var(--color-border);
-    transition: background 0.12s ease;
-
-    &:last-child {
-      border-bottom: none;
-    }
-
-    &:hover {
-      background: rgba(0, 0, 0, 0.03);
-    }
-
-    &:focus-visible {
-      outline: 2px solid var(--color-accent);
-      outline-offset: -2px;
-    }
+    min-width: 0;
+    flex: 1;
   }
 
-  &__trip-name {
+  &__trip-card-strip-wrap {
+    width: 100%;
+  }
+
+  &__trip-card-strip {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    gap: 0.45rem;
+    height: 200px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  &__trip-card-strip-item {
+    flex: 0 0 auto;
+    height: 100%;
+    margin: 0;
+    display: flex;
+    align-items: stretch;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  &__trip-card-strip-img {
+    display: block;
+    height: 100%;
+    width: auto;
+    max-height: 100%;
+    object-fit: cover;
+    vertical-align: middle;
+  }
+
+  &__trip-card-strip-empty {
+    margin: 0;
+    padding: 1rem 1.25rem;
+    font-size: 0.8125rem;
+    color: var(--color-text-muted);
+    min-height: 200px;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(15, 23, 42, 0.04);
+  }
+
+  &__trip-card-name {
+    margin: 0;
     font-size: 1rem;
     font-weight: 500;
     color: var(--color-text);
+    line-height: 1.35;
   }
 
-  &__trip-dates {
+  &__trip-card-dates {
+    margin: 0;
     font-size: 0.875rem;
     color: var(--color-text-muted);
   }
 
-  &__trip-sep {
+  &__trip-card-date-sep {
     margin: 0 0.25rem;
     opacity: 0.6;
+  }
+
+  &__trip-card-more {
+    flex-shrink: 0;
+    align-self: flex-start;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.35rem 0.65rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--color-accent);
+    text-decoration: none;
+    border-radius: 0.5rem;
+    border: 1px solid rgba(37, 99, 235, 0.35);
+    background: rgba(37, 99, 235, 0.06);
+    transition:
+      background 0.15s ease,
+      border-color 0.15s ease;
+
+    &:hover {
+      background: rgba(37, 99, 235, 0.12);
+      border-color: var(--color-accent);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--color-accent);
+      outline-offset: 2px;
+    }
   }
 
   &__nav {

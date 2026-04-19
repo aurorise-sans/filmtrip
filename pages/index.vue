@@ -19,24 +19,23 @@
           :key="trip.id"
           class="feed-card"
         >
-          <div class="feed-card__author">
-            <img
-              v-if="authorAvatarUrl(trip)"
-              class="feed-card__avatar"
-              :src="authorAvatarUrl(trip)!"
-              alt=""
-              width="32"
-              height="32"
-              loading="lazy"
-              decoding="async"
+          <div class="feed-card__head">
+            <div class="feed-card__head-main">
+              <p class="feed-card__trip-name">
+                {{ trip.name }}
+              </p>
+              <p class="feed-card__dates">
+                <time :datetime="trip.start_date">{{ formatDate(trip.start_date) }}</time>
+                <span class="feed-card__date-sep" aria-hidden="true">—</span>
+                <time :datetime="trip.end_date">{{ formatDate(trip.end_date) }}</time>
+              </p>
+            </div>
+            <NuxtLink
+              class="feed-card__more"
+              :to="`/trips/${trip.id}`"
             >
-            <User
-              v-else
-              class="feed-card__avatar feed-card__avatar--icon"
-              :size="20"
-              aria-hidden="true"
-            />
-            <span class="feed-card__author-name">{{ authorDisplayName(trip) }}</span>
+              查看更多
+            </NuxtLink>
           </div>
 
           <div class="feed-card__strip-wrap">
@@ -67,23 +66,6 @@
               尚無照片
             </p>
           </div>
-
-          <div class="feed-card__footer">
-            <div class="feed-card__footer-text">
-              <p class="feed-card__trip-name">
-                {{ trip.name }}
-              </p>
-              <p class="feed-card__dates">
-                {{ formatDateRange(trip.start_date, trip.end_date) }}
-              </p>
-            </div>
-            <NuxtLink
-              class="feed-card__more"
-              :to="`/trips/${trip.id}`"
-            >
-              查看更多
-            </NuxtLink>
-          </div>
         </li>
       </ul>
     </template>
@@ -91,20 +73,10 @@
 </template>
 
 <script setup lang="ts">
-import { User } from "lucide-vue-next"
-import { resolveUserDisplayName } from "~/utils/resolveUserDisplayName"
-
 type FeedPhotoRow = {
   id: string
   image_url: string
   created_at: string
-}
-
-type ProfileRow = {
-  id: string
-  avatar_url: string | null
-  display_name: string | null
-  email: string | null
 }
 
 type FeedTripRow = {
@@ -112,12 +84,10 @@ type FeedTripRow = {
   name: string
   start_date: string
   end_date: string
-  user_id: string
   photos: FeedPhotoRow[] | null
 }
 
 const supabase = useSupabaseClient()
-const user = useSupabaseUser()
 
 function sortedPhotos(trip: FeedTripRow): FeedPhotoRow[] {
   const photos = trip.photos
@@ -128,90 +98,35 @@ function sortedPhotos(trip: FeedTripRow): FeedPhotoRow[] {
   )
 }
 
-function selfMetaString(key: string): string | null {
-  const u = user.value
-  if (!u || typeof u.user_metadata !== "object" || !u.user_metadata) {
-    return null
-  }
-  const v = (u.user_metadata as Record<string, unknown>)[key]
-  return typeof v === "string" && v.trim() ? v : null
-}
-
 const { data: trips, pending, error: loadError } = await useAsyncData(
   "feed-public-trips",
   async () => {
     const { data: tripRows, error: tripErr } = await supabase
       .from("trips")
       .select(
-        "id, name, start_date, end_date, user_id, photos(id, image_url, created_at)",
+        "id, name, start_date, end_date, photos(id, image_url, created_at)",
       )
       .eq("is_public", true)
       .order("created_at", { ascending: false })
 
     if (tripErr) throw tripErr
 
-    const tripsData = (tripRows ?? []) as FeedTripRow[]
-    const userIds = [...new Set(tripsData.map((t) => t.user_id))]
-
-    // PostgREST 無 trips→profiles 外鍵時無法在單一 select 內 embed；改批次讀 profiles。
-    let profileById = new Map<string, ProfileRow>()
-    if (userIds.length) {
-      const { data: profileRows, error: profileErr } = await supabase
-        .from("profiles")
-        .select("id, avatar_url, display_name, email")
-        .in("id", userIds)
-
-      if (profileErr) throw profileErr
-
-      profileById = new Map(
-        (profileRows ?? []).map((p) => [p.id, p as ProfileRow]),
-      )
-    }
-
-    return tripsData.map((t) => ({
-      ...t,
-      _profile: profileById.get(t.user_id) ?? null,
-    }))
+    return (tripRows ?? []) as FeedTripRow[]
   },
 )
 
-type FeedTripWithProfile = FeedTripRow & {
-  _profile: ProfileRow | null
-}
+const feedTrips = computed(() => (trips.value ?? []) as FeedTripRow[])
 
-const feedTrips = computed(() => (trips.value ?? []) as FeedTripWithProfile[])
-
-function formatDateRange(start: string, end: string) {
-  const fmt = (value: string) => {
-    const d = new Date(value)
-    if (Number.isNaN(d.getTime())) return value
-    return new Intl.DateTimeFormat("zh-TW", {
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).format(d)
+/** 與個人檔案頁 `profile.vue` 的 formatDate 一致 */
+function formatDate(isoDate: string) {
+  const d = new Date(isoDate + "T12:00:00")
+  if (Number.isNaN(d.getTime())) {
+    return isoDate
   }
-  return `${fmt(start)} — ${fmt(end)}`
-}
-
-function authorAvatarUrl(trip: FeedTripWithProfile): string | null {
-  const fromDb = trip._profile?.avatar_url?.trim()
-  if (fromDb) return fromDb
-  if (user.value?.id === trip.user_id) {
-    return selfMetaString("avatar_url")
-  }
-  return null
-}
-
-function authorDisplayName(trip: FeedTripWithProfile): string {
-  const p = trip._profile
-  const isSelf = user.value?.id === trip.user_id
-  return resolveUserDisplayName({
-    profileDisplayName: p?.display_name,
-    email: p?.email ?? (isSelf ? user.value?.email : null),
-    userMetadata: isSelf
-      ? ((user.value?.user_metadata ?? null) as Record<string, unknown> | null)
-      : null,
+  return d.toLocaleDateString("zh-TW", {
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
   })
 }
 
@@ -261,34 +176,22 @@ const fetchError = computed(() => loadError.value?.message ?? "")
   box-shadow: 0 2px 12px rgba(15, 23, 42, 0.06);
 }
 
-.feed-card__author {
+.feed-card__head {
   display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.75rem 1rem;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid var(--color-border);
 }
 
-.feed-card__avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  object-fit: cover;
-  flex-shrink: 0;
-  display: block;
-  background: rgba(15, 23, 42, 0.06);
-
-  &--icon {
-    padding: 0.35rem;
-    box-sizing: border-box;
-    color: var(--color-text-muted);
-  }
-}
-
-.feed-card__author-name {
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: var(--color-text);
-  line-height: 1.3;
+.feed-card__head-main {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+  min-width: 0;
+  flex: 1;
 }
 
 .feed-card__strip-wrap {
@@ -334,44 +237,36 @@ const fetchError = computed(() => loadError.value?.message ?? "")
   padding: 1rem 1.25rem;
   font-size: 0.8125rem;
   color: var(--color-text-muted);
-  min-height: 4rem;
+  min-height: 200px;
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   justify-content: center;
   background: rgba(15, 23, 42, 0.04);
 }
 
-.feed-card__footer {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0.75rem 1rem 1rem;
-}
-
-.feed-card__footer-text {
-  min-width: 0;
-  flex: 1;
-}
-
 .feed-card__trip-name {
   margin: 0;
   font-size: 1rem;
-  font-weight: 700;
+  font-weight: 500;
   color: var(--color-text);
-  letter-spacing: -0.02em;
   line-height: 1.35;
 }
 
 .feed-card__dates {
-  margin: 0.25rem 0 0;
-  font-size: 0.8125rem;
+  margin: 0;
+  font-size: 0.875rem;
   color: var(--color-text-muted);
+}
+
+.feed-card__date-sep {
+  margin: 0 0.25rem;
+  opacity: 0.6;
 }
 
 .feed-card__more {
   flex-shrink: 0;
-  align-self: center;
+  align-self: flex-start;
   display: inline-flex;
   align-items: center;
   justify-content: center;

@@ -418,6 +418,22 @@ async function submitUpload() {
 
   uploading.value = true
 
+  const { data: maxRow, error: maxErr } = await supabase
+    .from("photos")
+    .select("sort_order")
+    .eq("trip_id", props.tripId)
+    .order("sort_order", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (maxErr) {
+    errorMessage.value = maxErr.message
+    uploading.value = false
+    return
+  }
+
+  let nextSortOrder = (maxRow?.sort_order ?? 0) + 1
+
   const inserts: {
     trip_id: string
     user_id: string
@@ -425,6 +441,7 @@ async function submitUpload() {
     latitude: number | null
     longitude: number | null
     place_name: string | null
+    sort_order: number
   }[] = []
 
   try {
@@ -455,7 +472,9 @@ async function submitUpload() {
         latitude: item.lat,
         longitude: item.lng,
         place_name: placeName,
+        sort_order: nextSortOrder,
       })
+      nextSortOrder += 1
     }
 
     const { error: insErr } = await supabase.from("photos").insert(inserts)

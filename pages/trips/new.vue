@@ -319,9 +319,11 @@ async function onComplete() {
       latitude: number | null
       longitude: number | null
       place_name: string | null
+      sort_order: number
     }[] = []
 
-    for (const item of items) {
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i]!
       const objectPath = storagePathForPhoto(uploadUserId, tripId, item.file)
       const { error: upErr } = await supabase.storage
         .from("photos")
@@ -342,6 +344,7 @@ async function onComplete() {
         latitude: item.lat,
         longitude: item.lng,
         place_name: item.placeName.trim() || null,
+        sort_order: i + 1,
       })
     }
 

@@ -33,79 +33,51 @@
       <p class="photo-upload__review-title">
         已選取 {{ pendingItems.length }} 張，請確認地點資訊（完成建立時才會上傳）
       </p>
-      <ul class="photo-upload__list">
-        <li
-          v-for="(item, index) in pendingItems"
+      <VueDraggable
+        v-model="draggablePending"
+        tag="div"
+        class="photo-upload__draggable-list"
+        :animation="150"
+        :filter="'.photo-upload-row__nofilter'"
+        :prevent-on-filter="false"
+      >
+        <div
+          v-for="(item, index) in draggablePending"
           :key="item.key"
-          class="photo-upload__row"
+          class="photo-upload-row"
         >
           <div
-            class="photo-upload__main"
-            :class="{
-              'photo-upload__main--gps-split':
-                item.hasGps && item.lat != null && item.lng != null,
-            }"
+            class="photo-upload-row__thumb"
+            @click="previewLightboxIndex = index"
           >
             <img
-              class="photo-upload__thumb"
+              class="photo-upload-row__img"
               :src="item.previewUrl"
               alt=""
-              @click="previewLightboxIndex = index"
             />
-            <div class="photo-upload__meta">
-              <template v-if="item.hasGps && item.lat != null && item.lng != null">
-                <div class="photo-upload__mini-wrap">
-                  <div
-                    :key="`mmap-${item.key}-${item.lat}-${item.lng}`"
-                    class="photo-upload__mini-map-host"
-                    :ref="(el) => bindMiniMap(item.key, el as HTMLElement | null, item.lng!, item.lat!)"
-                  />
-                  <button
-                    type="button"
-                    class="photo-upload__mini-edit"
-                    @click="openLocationPicker(item, 'adjust')"
-                  >
-                    調整地點
-                  </button>
-                </div>
-                <p
-                  v-if="item.placeName.trim()"
-                  class="photo-upload__mini-place"
-                >
-                  {{ item.placeName }}
-                </p>
-              </template>
-              <template v-else>
-                <div v-if="item.lat != null && item.lng != null && item.placeName" class="photo-upload__place-row">
-                  <span class="photo-upload__place-name">{{ item.placeName }}</span>
-                  <button
-                    type="button"
-                    class="photo-upload__place-change"
-                    @click="openLocationPicker(item, 'pick')"
-                  >
-                    更改
-                  </button>
-                </div>
-                <button
-                  v-else
-                  type="button"
-                  class="photo-upload__pick-place"
-                  @click="openLocationPicker(item, 'pick')"
-                >
-                  選擇地點
-                </button>
-              </template>
-            </div>
+          </div>
+          <div class="photo-upload-row__body">
+            <p class="photo-upload-row__addr">
+              {{ locationSummary(item) }}
+            </p>
+            <button
+              type="button"
+              class="photo-upload-row__loc photo-upload-row__nofilter"
+              @click="openLocationPicker(item, locationPickerKindFor(item))"
+            >
+              {{ locationButtonLabel(item) }}
+            </button>
           </div>
           <button
             type="button"
-            class="photo-upload__remove"
+            class="photo-upload-row__del photo-upload-row__nofilter"
+            aria-label="移除此照片"
             @click="removeItem(item.key)"
           >
             ✕
           </button>
-        </li>
-      </ul>
+        </div>
+      </VueDraggable>
       <div class="photo-upload__review-actions photo-upload__review-actions--single">
         <button
           type="button"
@@ -141,8 +113,8 @@
 
 <script setup lang="ts">
 import exifr from "exifr"
+import { VueDraggable } from "vue-draggable-plus"
 import type { LocalPendingPhotoItem } from "~/types/tripPhotoLocal"
-import { mountReadonlyLocationMap } from "~/utils/maplibreClient"
 import { fetchReverseDisplayName } from "~/utils/reverseGeocode"
 
 const MAX_FILES = 36
@@ -154,18 +126,60 @@ const errorMessage = ref("")
 
 const pendingItems = ref<LocalPendingPhotoItem[]>([])
 
+const draggablePending = computed({
+  get: () => pendingItems.value,
+  set: (next: LocalPendingPhotoItem[]) => {
+    pendingItems.value = next
+  },
+})
+
 const previewLightboxIndex = ref<number | null>(null)
 const photoLightboxUrls = computed(() =>
   pendingItems.value.map((i) => i.previewUrl),
 )
-
-const miniCleanups = new Map<string, () => void>()
 
 const locationPickerItemKey = ref<string | null>(null)
 const locationPickerTitle = ref("選擇地點")
 const locationPickerInitialLat = ref<number | null>(null)
 const locationPickerInitialLng = ref<number | null>(null)
 const locationPickerKind = ref<"adjust" | "pick">("pick")
+
+function locationSummary(item: LocalPendingPhotoItem) {
+  const name = item.placeName.trim()
+  if (name) return name
+  if (item.lat != null && item.lng != null) {
+    return coordLabel(item.lat, item.lng)
+  }
+  return "尚未選擇地點"
+}
+
+function locationButtonLabel(item: LocalPendingPhotoItem) {
+  if (
+    item.hasGps &&
+    item.lat != null &&
+    item.lng != null
+  ) {
+    return "調整地點"
+  }
+  if (
+    item.lat != null &&
+    item.lng != null &&
+    item.placeName.trim()
+  ) {
+    return "更改"
+  }
+  return "選擇地點"
+}
+
+function locationPickerKindFor(
+  item: LocalPendingPhotoItem,
+): "adjust" | "pick" {
+  return item.hasGps &&
+    item.lat != null &&
+    item.lng != null
+    ? "adjust"
+    : "pick"
+}
 
 function openLocationPicker(item: LocalPendingPhotoItem, kind: "adjust" | "pick") {
   locationPickerKind.value = kind
@@ -197,23 +211,6 @@ function coordLabel(lat: number, lng: number) {
   return `${formatCoord(lat)}，${formatCoord(lng)}`
 }
 
-async function bindMiniMap(
-  key: string,
-  el: HTMLElement | null,
-  lng: number,
-  lat: number,
-) {
-  miniCleanups.get(key)?.()
-  miniCleanups.delete(key)
-  if (!el) return
-  try {
-    const destroy = await mountReadonlyLocationMap(el, lng, lat)
-    miniCleanups.set(key, destroy)
-  } catch {
-    /* 小地圖載入失敗時略過 */
-  }
-}
-
 function openPicker() {
   errorMessage.value = ""
   noticeMessage.value = ""
@@ -231,8 +228,6 @@ function removeItem(key: string) {
   previewLightboxIndex.value = null
   const item = pendingItems.value.find((i) => i.key === key)
   if (item) URL.revokeObjectURL(item.previewUrl)
-  miniCleanups.get(key)?.()
-  miniCleanups.delete(key)
   if (locationPickerItemKey.value === key) {
     locationPickerItemKey.value = null
   }
@@ -241,8 +236,6 @@ function removeItem(key: string) {
 
 function cancelReview() {
   previewLightboxIndex.value = null
-  for (const d of miniCleanups.values()) d()
-  miniCleanups.clear()
   locationPickerItemKey.value = null
   revokePreviews()
   noticeMessage.value = ""
@@ -253,8 +246,6 @@ function cancelReview() {
 }
 
 onBeforeUnmount(() => {
-  for (const d of miniCleanups.values()) d()
-  miniCleanups.clear()
   revokePreviews()
 })
 
@@ -470,177 +461,119 @@ defineExpose({
   color: var(--color-text);
 }
 
-.photo-upload__list {
+.photo-upload__draggable-list {
   margin: 0;
-  padding: 0;
-  list-style: none;
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  overflow: hidden;
+  background: var(--color-surface);
+}
+
+.photo-upload-row {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  align-items: center;
   gap: 0.75rem;
-  overflow: visible;
+  min-height: 80px;
+  padding: 0.5rem 0.65rem;
+  box-sizing: border-box;
+  border-bottom: 1px solid var(--color-border);
+  cursor: grab;
+  touch-action: manipulation;
+
+  &:last-child {
+    border-bottom: none;
+  }
+
+  &:active {
+    cursor: grabbing;
+  }
 }
 
-.photo-upload__row {
-  display: flex;
-  flex-direction: row;
-  align-items: flex-start;
-  gap: 0.5rem;
-}
-
-.photo-upload__main {
-  display: contents;
-}
-
-.photo-upload__main--gps-split {
-  display: flex;
-  flex-direction: row;
-  align-items: flex-start;
-  gap: 0.5rem;
-  flex: 1;
-  min-width: 0;
-}
-
-.photo-upload__main--gps-split > .photo-upload__thumb {
-  width: 50%;
-  flex: 0 0 50%;
-  height: auto;
-  aspect-ratio: 1;
-}
-
-.photo-upload__main--gps-split > .photo-upload__meta {
-  width: 50%;
-  flex: 0 0 50%;
-}
-
-.photo-upload__thumb {
-  width: 3rem;
-  height: 3rem;
-  object-fit: cover;
-  border-radius: 0.25rem;
+.photo-upload-row__thumb {
   flex-shrink: 0;
+  width: 80px;
+  height: 80px;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
   background: var(--color-border);
   cursor: pointer;
 }
 
-.photo-upload__meta {
+.photo-upload-row__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  vertical-align: middle;
+}
+
+.photo-upload-row__body {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
+  justify-content: center;
+}
+
+.photo-upload-row__addr {
+  margin: 0;
   font-size: 0.8125rem;
-}
-
-.photo-upload__remove {
-  flex-shrink: 0;
-  cursor: pointer;
-  padding: 0.15rem 0.35rem;
-  font-size: 0.75rem;
-  color: var(--color-text-muted);
-  background: transparent;
-  border: 1px solid var(--color-border);
-  border-radius: 0.25rem;
-
-  &:hover {
-    color: var(--color-danger);
-    border-color: var(--color-danger);
-  }
-}
-
-.photo-upload__mini-wrap {
-  position: relative;
-  width: 100%;
-  height: 160px;
-  border-radius: 0.375rem;
-  overflow: hidden;
-  border: 1px solid var(--color-border);
-  background: var(--color-border);
-}
-
-.photo-upload__mini-map-host {
-  width: 100%;
-  height: 100%;
-}
-
-.photo-upload__mini-edit {
-  position: absolute;
-  top: 0.35rem;
-  right: 0.35rem;
-  z-index: 2;
-  cursor: pointer;
-  padding: 0.2rem 0.45rem;
-  font: inherit;
-  font-size: 0.75rem;
-  font-weight: 500;
-  color: var(--color-text);
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid var(--color-border);
-  border-radius: 0.25rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
-
-  &:hover {
-    background: #fff;
-    border-color: var(--color-accent);
-  }
-}
-
-.photo-upload__mini-place {
-  margin: 0.25rem 0 0;
-  font-size: 0.75rem;
   line-height: 1.35;
   color: var(--color-text-muted);
   display: -webkit-box;
-  -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
-  line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
   word-break: break-word;
 }
 
-.photo-upload__place-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-}
-
-.photo-upload__place-name {
-  flex: 1;
-  min-width: 0;
-  color: var(--color-text);
-  word-break: break-word;
-}
-
-.photo-upload__place-change {
-  flex-shrink: 0;
-  cursor: pointer;
-  padding: 0.15rem 0.45rem;
+.photo-upload-row__loc {
+  align-self: flex-start;
+  margin: 0;
+  padding: 0.2rem 0.5rem;
   font: inherit;
-  font-size: 0.8125rem;
+  font-size: 0.75rem;
+  font-weight: 500;
   color: var(--color-accent);
   background: transparent;
-  border: 1px solid var(--color-border);
+  border: 1px solid rgba(37, 99, 235, 0.35);
   border-radius: 0.25rem;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
 
   &:hover {
+    background: rgba(37, 99, 235, 0.06);
     border-color: var(--color-accent);
   }
 }
 
-.photo-upload__pick-place {
-  cursor: pointer;
-  align-self: flex-start;
-  padding: 0.4rem 0.75rem;
-  font: inherit;
-  font-size: 0.8125rem;
-  font-weight: 500;
-  color: #fff;
-  background: var(--color-accent);
+.photo-upload-row__del {
+  flex-shrink: 0;
+  width: 2rem;
+  height: 2rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
   border: none;
-  border-radius: 0.375rem;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease;
 
   &:hover {
-    background: var(--color-accent-hover);
+    color: var(--color-danger);
+    background: rgba(220, 38, 38, 0.08);
   }
 }
 

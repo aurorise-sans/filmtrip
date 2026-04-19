@@ -321,6 +321,7 @@ type TripPhotoRow = {
   id: string
   image_url: string
   created_at: string
+  sort_order: number
 }
 
 type TripRow = {
@@ -418,7 +419,7 @@ const { data: trips, error, pending } = await useAsyncData(
     const { data, error: qErr } = await supabase
       .from("trips")
       .select(
-        "id, name, start_date, end_date, created_at, photos(id, image_url, created_at)",
+        "id, name, start_date, end_date, created_at, photos(id, image_url, created_at, sort_order)",
       )
       .eq("user_id", userId.value)
       .order("created_at", { ascending: false })
@@ -436,10 +437,7 @@ const tripsList = computed(() => trips.value ?? [])
 function sortedPhotos(trip: TripRow): TripPhotoRow[] {
   const photos = trip.photos
   if (!photos?.length) return []
-  return [...photos].sort(
-    (a, b) =>
-      new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
-  )
+  return [...photos].sort((a, b) => a.sort_order - b.sort_order)
 }
 const fetchError = computed(() => error.value?.message ?? null)
 

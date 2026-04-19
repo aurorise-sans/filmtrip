@@ -82,6 +82,7 @@ export interface Database {
           longitude: number | null
           place_name: string | null
           created_at: string
+          sort_order: number
         }
         Insert: {
           id?: string
@@ -92,6 +93,7 @@ export interface Database {
           longitude?: number | null
           place_name?: string | null
           created_at?: string
+          sort_order: number
         }
         Update: {
           trip_id?: string
@@ -100,6 +102,7 @@ export interface Database {
           latitude?: number | null
           longitude?: number | null
           place_name?: string | null
+          sort_order?: number
         }
         Relationships: []
       }

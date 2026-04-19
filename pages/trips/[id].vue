@@ -231,57 +231,73 @@
           >
             {{ photoDeleteError }}
           </p>
-
-          <div
-            v-if="pageData.photos.length"
-            class="trip-detail__grid trip-detail__grid--edit"
+          <p
+            v-if="photoReorderError"
+            class="trip-detail__photo-delete-error"
+            role="alert"
           >
-            <figure
-              v-for="(photo, photoIndex) in pageData.photos"
-              :key="photo.id"
-              class="trip-detail__figure"
+            {{ photoReorderError }}
+          </p>
+
+          <ClientOnly>
+            <VueDraggable
+              v-if="pageData.photos.length"
+              v-model="draggablePhotos"
+              tag="div"
+              class="trip-photo-edit-list"
+              :animation="150"
+              :filter="'.trip-photo-edit-row__nofilter'"
+              :prevent-on-filter="false"
+              :disabled="photoReorderPending"
+              @end="onEditPhotosDragEnd"
             >
               <div
-                class="trip-detail__thumb-wrap"
-                role="button"
-                tabindex="0"
-                @click="openPhotoLightbox(photoIndex)"
-                @keydown.enter.prevent="openPhotoLightbox(photoIndex)"
-                @keydown.space.prevent="openPhotoLightbox(photoIndex)"
+                v-for="(photo, photoIndex) in draggablePhotos"
+                :key="photo.id"
+                class="trip-photo-edit-row"
               >
-                <img
-                  class="trip-detail__thumb"
-                  :src="photo.image_url"
-                  :alt="photoCaption(photo) || '旅程照片'"
-                  loading="lazy"
-                  decoding="async"
-                />
+                <div
+                  class="trip-photo-edit-row__thumb"
+                  role="button"
+                  tabindex="0"
+                  @click="openPhotoLightbox(photoIndex)"
+                  @keydown.enter.prevent="openPhotoLightbox(photoIndex)"
+                  @keydown.space.prevent="openPhotoLightbox(photoIndex)"
+                >
+                  <img
+                    class="trip-photo-edit-row__img"
+                    :src="photo.image_url"
+                    :alt="photoCaption(photo) || '旅程照片'"
+                    loading="lazy"
+                    decoding="async"
+                  />
+                </div>
+                <div class="trip-photo-edit-row__body">
+                  <p class="trip-photo-edit-row__addr">
+                    {{ photoCaption(photo) || "未設定地點" }}
+                  </p>
+                  <button
+                    type="button"
+                    class="trip-photo-edit-row__loc trip-photo-edit-row__nofilter"
+                    @click="locationPickerPhoto = photo"
+                  >
+                    編輯地點
+                  </button>
+                </div>
                 <button
                   type="button"
-                  class="trip-detail__photo-delete"
+                  class="trip-photo-edit-row__delete trip-photo-edit-row__nofilter"
                   :disabled="deletingPhotoId === photo.id"
                   aria-label="刪除此照片"
-                  @click.stop="deletePhoto(photo)"
+                  @click="deletePhoto(photo)"
                 >
                   ✕
                 </button>
               </div>
-              <div class="trip-detail__edit-photo-meta">
-                <p class="trip-detail__caption">
-                  {{ photoCaption(photo) }}
-                </p>
-                <button
-                  type="button"
-                  class="trip-detail__photo-loc-btn"
-                  @click="locationPickerPhoto = photo"
-                >
-                  編輯地點
-                </button>
-              </div>
-            </figure>
-          </div>
+            </VueDraggable>
+          </ClientOnly>
 
-          <div v-else class="trip-detail__empty">
+          <div v-if="!pageData.photos.length" class="trip-detail__empty">
             <p class="trip-detail__empty-text">尚無照片，請使用「上傳照片」加入</p>
           </div>
         </div>
@@ -390,6 +406,7 @@
 
 <script setup lang="ts">
 import { LayoutGrid, GalleryHorizontal } from "lucide-vue-next"
+import { VueDraggable } from "vue-draggable-plus"
 
 type TripDetail = {
   id: string
@@ -404,6 +421,7 @@ type PhotoRow = {
   id: string
   image_url: string
   created_at: string
+  sort_order: number
   latitude: number | null
   longitude: number | null
   place_name: string | null
@@ -450,9 +468,11 @@ const { data: pageData, pending, error, refresh } = await useAsyncData(
 
     const { data: photos, error: photosErr } = await supabase
       .from("photos")
-      .select("id, image_url, created_at, latitude, longitude, place_name")
+      .select(
+        "id, image_url, created_at, sort_order, latitude, longitude, place_name",
+      )
       .eq("trip_id", tripId.value)
-      .order("created_at", { ascending: false })
+      .order("sort_order", { ascending: true })
 
     if (photosErr) throw photosErr
 
@@ -484,6 +504,8 @@ const savePending = ref(false)
 const deletePending = ref(false)
 const deletingPhotoId = ref<string | null>(null)
 const photoDeleteError = ref("")
+const photoReorderPending = ref(false)
+const photoReorderError = ref("")
 const photoViewMode = ref<"grid" | "strip">("grid")
 const locationPickerPhoto = ref<PhotoRow | null>(null)
 const photoLightboxOpen = ref(false)
@@ -491,6 +513,15 @@ const photoLightboxInitialIndex = ref(0)
 const photoLightboxUrls = computed(
   () => pageData.value?.photos.map((p) => p.image_url) ?? [],
 )
+
+const draggablePhotos = computed({
+  get: () => pageData.value?.photos ?? [],
+  set: (next: PhotoRow[]) => {
+    if (pageData.value) {
+      pageData.value = { ...pageData.value, photos: next }
+    }
+  },
+})
 
 function openPhotoLightbox(index: number) {
   photoLightboxInitialIndex.value = index
@@ -529,12 +560,14 @@ function startEdit() {
   editIsPublic.value = t.is_public
   editError.value = ""
   photoDeleteError.value = ""
+  photoReorderError.value = ""
   isEditing.value = true
 }
 
 function resetEditSession() {
   editError.value = ""
   photoDeleteError.value = ""
+  photoReorderError.value = ""
   locationPickerPhoto.value = null
 }
 
@@ -700,13 +733,72 @@ function storageObjectPathFromPublicImageUrl(imageUrl: string): string | null {
 async function refreshPhotosList() {
   const { data: photos } = await supabase
     .from("photos")
-    .select("id, image_url, created_at, latitude, longitude, place_name")
+    .select(
+      "id, image_url, created_at, sort_order, latitude, longitude, place_name",
+    )
     .eq("trip_id", tripId.value)
-    .order("created_at", { ascending: false })
+    .order("sort_order", { ascending: true })
 
   if (pageData.value && photos) {
     pageData.value = { ...pageData.value, photos: photos as PhotoRow[] }
   }
+}
+
+const SORT_ORDER_TEMP_BASE = 1_000_000
+
+async function persistPhotoOrder() {
+  if (!tripId.value || !pageData.value?.photos.length) return
+
+  const photos = pageData.value.photos
+  const ids = photos.map((p) => p.id)
+
+  photoReorderPending.value = true
+  photoReorderError.value = ""
+
+  try {
+    const phase1 = await Promise.all(
+      ids.map((id, i) =>
+        supabase
+          .from("photos")
+          .update({ sort_order: SORT_ORDER_TEMP_BASE + i })
+          .eq("id", id),
+      ),
+    )
+    for (const r of phase1) {
+      if (r.error) throw new Error(r.error.message)
+    }
+
+    const phase2 = await Promise.all(
+      ids.map((id, i) =>
+        supabase
+          .from("photos")
+          .update({ sort_order: i + 1 })
+          .eq("id", id),
+      ),
+    )
+    for (const r of phase2) {
+      if (r.error) throw new Error(r.error.message)
+    }
+
+    pageData.value = {
+      ...pageData.value,
+      photos: photos.map((p, i) => ({ ...p, sort_order: i + 1 })),
+    }
+  } catch (e) {
+    photoReorderError.value =
+      e instanceof Error ? e.message : "排序儲存失敗，請稍後再試。"
+    await refreshPhotosList()
+  } finally {
+    photoReorderPending.value = false
+  }
+}
+
+async function onEditPhotosDragEnd() {
+  const photos = pageData.value?.photos
+  if (!photos?.length || photoReorderPending.value) return
+  const needsSave = photos.some((p, i) => p.sort_order !== i + 1)
+  if (!needsSave) return
+  await persistPhotoOrder()
 }
 
 async function savePhotoLocation(lat: number, lng: number) {
@@ -1371,68 +1463,126 @@ function formatDate(isoDate: string) {
     }
   }
 
-  &__grid--edit {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.65rem;
-    overflow: visible;
-    padding-bottom: 0.25rem;
+  .trip-photo-edit-list {
+    width: 100%;
+    max-width: 36rem;
+    margin: 0;
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+    overflow: hidden;
+    background: var(--color-surface);
+  }
 
-    .trip-detail__figure {
-      display: flex;
-      flex-direction: column;
-      height: 100%;
-      min-height: 0;
-      width: 100%;
-      min-width: 0;
+  .trip-photo-edit-row {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 0.75rem;
+    min-height: 80px;
+    padding: 0.5rem 0.65rem;
+    box-sizing: border-box;
+    border-bottom: 1px solid var(--color-border);
+    cursor: grab;
+    touch-action: manipulation;
+
+    &:last-child {
+      border-bottom: none;
     }
 
-    .trip-detail__thumb-wrap {
-      flex-shrink: 0;
-      align-self: stretch;
-      width: 100%;
-      height: auto;
-      aspect-ratio: 1;
-      overflow: hidden;
-      display: block;
+    &:active {
+      cursor: grabbing;
+    }
+  }
+
+  .trip-photo-edit-row__thumb {
+    flex-shrink: 0;
+    width: 80px;
+    height: 80px;
+    border-radius: 0.5rem;
+    overflow: hidden;
+    border: 1px solid var(--color-border);
+    background: var(--color-border);
+    cursor: pointer;
+  }
+
+  .trip-photo-edit-row__img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    vertical-align: middle;
+  }
+
+  .trip-photo-edit-row__body {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    justify-content: center;
+  }
+
+  .trip-photo-edit-row__addr {
+    margin: 0;
+    font-size: 0.8125rem;
+    line-height: 1.35;
+    color: var(--color-text-muted);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    word-break: break-word;
+  }
+
+  .trip-photo-edit-row__loc {
+    align-self: flex-start;
+    margin: 0;
+    padding: 0.2rem 0.5rem;
+    font: inherit;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--color-accent);
+    background: transparent;
+    border: 1px solid rgba(37, 99, 235, 0.35);
+    border-radius: 0.25rem;
+    cursor: pointer;
+    transition:
+      background 0.15s ease,
+      border-color 0.15s ease;
+
+    &:hover {
+      background: rgba(37, 99, 235, 0.06);
+      border-color: var(--color-accent);
+    }
+  }
+
+  .trip-photo-edit-row__delete {
+    flex-shrink: 0;
+    width: 2rem;
+    height: 2rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: none;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--color-text-muted);
+    font-size: 1rem;
+    line-height: 1;
+    cursor: pointer;
+    transition:
+      color 0.15s ease,
+      background 0.15s ease;
+
+    &:hover:not(:disabled) {
+      color: var(--color-danger);
+      background: rgba(220, 38, 38, 0.08);
     }
 
-    .trip-detail__thumb {
-      position: absolute;
-      inset: 0;
-      width: 100%;
-      height: 100%;
-      max-width: none;
-      object-fit: cover;
-    }
-
-    .trip-detail__edit-photo-meta {
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-      flex: 1 1 auto;
-      min-height: 0;
-      height: 100%;
-      width: 100%;
-      box-sizing: border-box;
-      gap: 4px
-    }
-
-    .trip-detail__caption {
-      margin: auto;
-      box-sizing: border-box;
-      display: -webkit-box;
-      -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical;
-      overflow: hidden;
-      
-    }
-
-    .trip-detail__photo-loc-btn {
-      flex-shrink: 0;
-      align-self: flex-start;
-      width: 100%;
-      box-sizing: border-box;
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
     }
   }
 

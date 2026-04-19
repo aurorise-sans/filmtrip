@@ -139,6 +139,7 @@ type TripPhotoRow = {
   id: string
   image_url: string
   created_at: string
+  sort_order: number
 }
 
 type TripRow = {
@@ -194,7 +195,7 @@ const { data: bundle, pending, error: loadErr } = await useAsyncData(
     const { data: tripRows, error: tErr } = await supabase
       .from("trips")
       .select(
-        "id, name, start_date, end_date, created_at, photos(id, image_url, created_at)",
+        "id, name, start_date, end_date, created_at, photos(id, image_url, created_at, sort_order)",
       )
       .eq("user_id", id)
       .eq("is_public", true)
@@ -244,10 +245,7 @@ const tripCountLabel = computed(() => `${tripsList.value.length} 筆旅程`)
 function sortedPhotos(trip: TripRow): TripPhotoRow[] {
   const photos = trip.photos
   if (!photos?.length) return []
-  return [...photos].sort(
-    (a, b) =>
-      new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
-  )
+  return [...photos].sort((a, b) => a.sort_order - b.sort_order)
 }
 
 function formatDate(isoDate: string) {

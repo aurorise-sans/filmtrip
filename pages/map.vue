@@ -516,7 +516,7 @@ async function openTripModal(tripId: string) {
     .from("photos")
     .select("id, image_url, place_name")
     .eq("trip_id", tripId)
-    .order("created_at", { ascending: false })
+    .order("sort_order", { ascending: true })
 
   if (selectedTripId.value !== tripId) return
 

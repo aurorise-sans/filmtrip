@@ -330,8 +330,8 @@ const layoutHeaderBackOverride = useState<boolean | null>(
 const DEFAULT_MAP_CENTER: [number, number] = [121.5, 24.25]
 const DEFAULT_MAP_ZOOM = 6.5
 const GEOCODE_FLY_ZOOM = 16
-/** 從 /map?lat=&lng=、定位按鈕、初始定位成功時的目標 zoom */
-const QUERY_PHOTO_FLY_ZOOM = 17
+/** 從 /map?lat=&lng=、定位按鈕、Navbar 地圖再點、初始定位成功時的目標 zoom */
+const QUERY_PHOTO_FLY_ZOOM = 16
 
 function parseMapQueryLatLng(): { lat: number; lng: number } | null {
   const lat = Number(route.query.lat)
@@ -687,6 +687,20 @@ watch(
     })
   },
 )
+
+/** 與 layouts/default.vue 共用：已在 /map 時再點 Navbar 地圖 → 重新定位 */
+const mapNavRelocateTick = useState("map-nav-relocate-tick", () => 0)
+
+watch(mapNavRelocateTick, async () => {
+  if (!map) return
+  clearStoredMapCamera()
+  const v = await getInitialMapViewFromGeolocation()
+  map.flyTo({
+    center: v.center,
+    zoom: v.zoom,
+    essential: true,
+  })
+})
 
 async function waitForMapLibreGl(timeoutMs = 15_000): Promise<MapLibreGlobal> {
   const deadline = Date.now() + timeoutMs

@@ -62,6 +62,7 @@
         class="layout-default__appbar-btn"
         :class="{ 'layout-default__appbar-btn--active': mapActive }"
         to="/map"
+        @click.capture="onMapNavClick"
       >
         <Map :size="24" aria-hidden="true" />
         <span class="layout-default__appbar-sr">地圖</span>
@@ -137,12 +138,23 @@ const { navAvatarDisplayUrl, loadProfileAvatarFromDb } = useNavProfileAvatar()
 
 const feedHomeReshuffleTick = useState("feed-home-reshuffle-tick", () => 0)
 
+/** 已在 /map 時再點地圖：觸發重新定位（由 pages/map.vue watch） */
+const mapNavRelocateTick = useState("map-nav-relocate-tick", () => 0)
+
 function onHomeNavClick(e: MouseEvent) {
   if (route.path !== "/") {
     return
   }
   e.preventDefault()
   feedHomeReshuffleTick.value += 1
+}
+
+function onMapNavClick(e: MouseEvent) {
+  if (route.path !== "/map") {
+    return
+  }
+  e.preventDefault()
+  mapNavRelocateTick.value += 1
 }
 
 const homeActive = computed(() => route.path === "/")

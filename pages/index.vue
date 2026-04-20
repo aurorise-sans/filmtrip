@@ -38,9 +38,22 @@
               <button
                 type="button"
                 class="feed-photo-card__icon-btn"
+                :class="{
+                  'feed-photo-card__icon-btn--liked': isPhotoLikedByMe(
+                    row.photo.id,
+                  ),
+                }"
                 aria-label="按讚"
+                :aria-pressed="isPhotoLikedByMe(row.photo.id)"
+                @click="onFeedLikeClick(row.photo.id)"
               >
-                <Heart :size="22" aria-hidden="true" />
+                <Heart
+                  :size="22"
+                  aria-hidden="true"
+                  :fill="
+                    isPhotoLikedByMe(row.photo.id) ? 'currentColor' : 'none'
+                  "
+                />
               </button>
               <NuxtLink
                 v-if="row.hasCoords"
@@ -187,12 +200,19 @@ const feedScrollYRestore = useState<number | null>(
   () => null,
 )
 
+const LIKE_META_CHUNK = 200
+
 const BATCH_SIZE = 20
 const MAX_PHOTOS_PER_TRIP = 3
 /** 同一作者在每批（20 筆）內最多幾張 */
 const MAX_PHOTOS_PER_AUTHOR_PER_BATCH = 3
 
 const supabase = useSupabaseClient()
+
+/** 各照片按讚總數（UI 暫不顯示，供樂觀更新與資料正確性） */
+const likeCountByPhotoId = ref<Record<string, number>>({})
+/** 目前登入者是否已對該照片按讚 */
+const likedByMeByPhotoId = ref<Record<string, boolean>>({})
 
 const feedHomeReshuffleTick = useState("feed-home-reshuffle-tick", () => 0)
 
@@ -264,6 +284,108 @@ function feedPhotoLayout(photoId: string) {
     imgClass: crop
       ? "feed-photo-card__img feed-photo-card__img--cover"
       : "feed-photo-card__img",
+  }
+}
+
+function isPhotoLikedByMe(photoId: string): boolean {
+  return !!likedByMeByPhotoId.value[photoId]
+}
+
+/**
+ * 依 Feed 內照片 id 從 DB 載入按讚數與目前使用者是否已按讚。
+ * 應在瀏覽器端呼叫（含 onMounted），以取得正確的 auth session。
+ */
+async function fetchFeedLikeMeta(photoIds: string[]) {
+  const uniq = [...new Set(photoIds)]
+  if (!uniq.length) {
+    likeCountByPhotoId.value = {}
+    likedByMeByPhotoId.value = {}
+    return
+  }
+
+  const counts: Record<string, number> = {}
+  for (let i = 0; i < uniq.length; i += LIKE_META_CHUNK) {
+    const chunk = uniq.slice(i, i + LIKE_META_CHUNK)
+    const { data: likeRows, error: cErr } = await supabase
+      .from("likes")
+      .select("photo_id")
+      .in("photo_id", chunk)
+    if (cErr) throw cErr
+    for (const row of likeRows ?? []) {
+      const pid = row.photo_id as string
+      counts[pid] = (counts[pid] ?? 0) + 1
+    }
+  }
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  const liked: Record<string, boolean> = {}
+  if (user) {
+    for (let i = 0; i < uniq.length; i += LIKE_META_CHUNK) {
+      const chunk = uniq.slice(i, i + LIKE_META_CHUNK)
+      const { data: mineRows, error: mErr } = await supabase
+        .from("likes")
+        .select("photo_id")
+        .eq("user_id", user.id)
+        .in("photo_id", chunk)
+      if (mErr) throw mErr
+      for (const row of mineRows ?? []) {
+        liked[row.photo_id as string] = true
+      }
+    }
+  }
+
+  likeCountByPhotoId.value = counts
+  likedByMeByPhotoId.value = liked
+}
+
+async function onFeedLikeClick(photoId: string) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) {
+    await navigateTo("/login")
+    return
+  }
+
+  const prevLiked = !!likedByMeByPhotoId.value[photoId]
+  const prevCount = likeCountByPhotoId.value[photoId] ?? 0
+  const nextLiked = !prevLiked
+
+  likedByMeByPhotoId.value = {
+    ...likedByMeByPhotoId.value,
+    [photoId]: nextLiked,
+  }
+  likeCountByPhotoId.value = {
+    ...likeCountByPhotoId.value,
+    [photoId]: Math.max(0, prevCount + (nextLiked ? 1 : -1)),
+  }
+
+  try {
+    if (nextLiked) {
+      const { error } = await supabase.from("likes").insert({
+        user_id: user.id,
+        photo_id: photoId,
+      })
+      if (error) throw error
+    } else {
+      const { error } = await supabase
+        .from("likes")
+        .delete()
+        .eq("user_id", user.id)
+        .eq("photo_id", photoId)
+      if (error) throw error
+    }
+  } catch {
+    likedByMeByPhotoId.value = {
+      ...likedByMeByPhotoId.value,
+      [photoId]: prevLiked,
+    }
+    likeCountByPhotoId.value = {
+      ...likeCountByPhotoId.value,
+      [photoId]: prevCount,
+    }
   }
 }
 
@@ -453,6 +575,9 @@ watch(feedHomeReshuffleTick, async () => {
   }
   await refreshFeedData()
   await initFeedFromCurrentData()
+  if (import.meta.client) {
+    await fetchFeedLikeMeta(baseFeedItems.value.map((it) => it.photo.id))
+  }
   feedClientReady.value = true
   await nextTick()
   setupFeedIntersectionObserver()
@@ -573,6 +698,12 @@ function restoreFeedScrollPosition(targetY: number) {
 }
 
 onMounted(async () => {
+  await nextTick()
+  /** 瀏覽器端 session 就緒後從 DB 重抓按讚（不依賴 SSR / useAsyncData 快取） */
+  if (import.meta.client) {
+    await fetchFeedLikeMeta(baseFeedItems.value.map((it) => it.photo.id))
+  }
+
   const snap = feedListSnapshot.value
   const canRestoreList =
     snap &&
@@ -744,6 +875,15 @@ onMounted(async () => {
   opacity: 0.4;
   cursor: not-allowed;
   pointer-events: none;
+}
+
+.feed-photo-card__icon-btn--liked {
+  color: #dc2626;
+
+  &:hover:not(.feed-photo-card__icon-btn--disabled) {
+    color: #b91c1c;
+    background: rgba(220, 38, 38, 0.08);
+  }
 }
 
 .feed-photo-card__author-link:hover .feed-photo-card__avatar-wrap {

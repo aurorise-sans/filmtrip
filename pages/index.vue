@@ -16,77 +16,78 @@
       <template v-else>
         <ul class="feed-page__list">
           <li
-            v-for="row in displayedRows"
+            v-for="{ row, layout } in displayedRowsWithPhotoLayout"
             :key="row._rowId"
             class="feed-photo-card"
           >
-            <div class="feed-photo-card__author">
+            <NuxtLink
+              :class="layout.linkClass"
+              :to="`/trips/${row.trip.id}`"
+            >
+              <img
+                :class="layout.imgClass"
+                :src="row.photo.image_url"
+                alt=""
+                loading="lazy"
+                decoding="async"
+                @load="onFeedPhotoImgLoad($event, row.photo.id)"
+              >
+            </NuxtLink>
+
+            <div class="feed-photo-card__toolbar">
+              <button
+                type="button"
+                class="feed-photo-card__icon-btn"
+                aria-label="按讚"
+              >
+                <Heart :size="22" aria-hidden="true" />
+              </button>
               <NuxtLink
-                class="feed-photo-card__author-link"
+                v-if="row.hasCoords"
+                class="feed-photo-card__icon-btn"
+                :to="`/nearby/${row.photo.id}`"
+                aria-label="附近照片地圖"
+              >
+                <MapIcon :size="22" aria-hidden="true" />
+              </NuxtLink>
+              <span
+                v-else
+                class="feed-photo-card__icon-btn feed-photo-card__icon-btn--disabled"
+                aria-disabled="true"
+                aria-label="此照片無座標，無法顯示地圖"
+              >
+                <MapIcon :size="22" aria-hidden="true" />
+              </span>
+              <button
+                type="button"
+                class="feed-photo-card__icon-btn"
+                aria-label="收藏"
+              >
+                <Bookmark :size="22" aria-hidden="true" />
+              </button>
+              <NuxtLink
+                class="feed-photo-card__icon-btn feed-photo-card__author-link"
                 :to="`/profile/${row.authorUserId}`"
+                aria-label="作者個人頁"
               >
                 <span class="feed-photo-card__avatar-wrap">
                   <img
                     v-if="row.profile.avatar_url"
-                    class="feed-photo-card__avatar"
+                    class="feed-photo-card__avatar-img"
                     :src="row.profile.avatar_url"
                     alt=""
-                    width="40"
-                    height="40"
+                    width="32"
+                    height="32"
                     loading="lazy"
                     decoding="async"
                   >
                   <User
                     v-else
-                    class="feed-photo-card__avatar-icon"
+                    class="feed-photo-card__avatar-fallback"
                     :size="22"
                     aria-hidden="true"
                   />
                 </span>
-                <span class="feed-photo-card__name">{{ row.displayName }}</span>
-              </NuxtLink>
-            </div>
-
-            <div class="feed-photo-card__media">
-              <img
-                class="feed-photo-card__img"
-                :src="row.photo.image_url"
-                alt=""
-                loading="lazy"
-                decoding="async"
-              >
-            </div>
-
-            <p
-              v-if="row.addressLine"
-              class="feed-photo-card__address"
-            >
-              {{ row.addressLine }}
-            </p>
-
-            <div class="feed-photo-card__actions">
-              <a
-                v-if="row.hasCoords"
-                class="feed-photo-card__btn feed-photo-card__btn--map"
-                :href="googleMapsUrl(row.photo.latitude!, row.photo.longitude!)"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Google Map
-              </a>
-              <button
-                v-else
-                type="button"
-                class="feed-photo-card__btn feed-photo-card__btn--map feed-photo-card__btn--disabled"
-                disabled
-              >
-                Google Map
-              </button>
-              <NuxtLink
-                class="feed-photo-card__btn feed-photo-card__btn--trip"
-                :to="`/trips/${row.trip.id}`"
-              >
-                查看旅程
               </NuxtLink>
             </div>
           </li>
@@ -109,8 +110,16 @@
 
 <script setup lang="ts">
 import { nextTick } from "vue"
-import { User } from "lucide-vue-next"
+import { onBeforeRouteLeave } from "vue-router"
+import { Bookmark, Heart, Map as MapIcon, User } from "lucide-vue-next"
 import { resolveUserDisplayName } from "~/utils/resolveUserDisplayName"
+
+const FEED_SCROLL_STORAGE_KEY = "filmtrip-feed-scroll-y"
+
+definePageMeta({
+  /** 導向首頁時不強制捲到頂，改由 useState / sessionStorage + onMounted 還原 */
+  scrollToTop: false,
+})
 
 type TripEmbed = {
   id: string
@@ -153,6 +162,31 @@ type FeedItem = {
 /** 列表列（含 Vue 用唯一 key；允許同照片多列） */
 type FeedDisplayRow = FeedItem & { _rowId: string }
 
+type FeedListSnapshot = {
+  pool: FeedItem[]
+  displayedRows: FeedDisplayRow[]
+  rowIdSeq: number
+  intrinsic: Record<string, { w: number; h: number }>
+}
+
+/** 避免離開再回來時 useAsyncData 重打 API */
+const feedDataCache = useState<FeedItem[] | null>(
+  "feed-public-data-cache",
+  () => null,
+)
+
+/** 離開 Feed 時保存列表，返回時還原已載入批次 */
+const feedListSnapshot = useState<FeedListSnapshot | null>(
+  "feed-list-snapshot",
+  () => null,
+)
+
+/** SPA 返回時的滾動位置（整頁重新整理會清空，另備 sessionStorage） */
+const feedScrollYRestore = useState<number | null>(
+  "feed-scroll-y-restore",
+  () => null,
+)
+
 const BATCH_SIZE = 20
 const MAX_PHOTOS_PER_TRIP = 3
 /** 同一作者在每批（20 筆）內最多幾張 */
@@ -189,9 +223,48 @@ function hasValidCoords(lat: number | null, lng: number | null): boolean {
   return true
 }
 
-function googleMapsUrl(lat: number, lng: number) {
-  const q = encodeURIComponent(`${lat},${lng}`)
-  return `https://www.google.com/maps/search/?api=1&query=${q}`
+/** 以圖檔載入後的 natural 尺寸判斷（DB 無寬高欄位） */
+const intrinsicByPhotoId = ref<Record<string, { w: number; h: number }>>({})
+
+function onFeedPhotoImgLoad(e: Event, photoId: string) {
+  const el = e.target
+  if (!(el instanceof HTMLImageElement)) return
+  const w = el.naturalWidth
+  const h = el.naturalHeight
+  if (!w || !h) return
+  intrinsicByPhotoId.value = {
+    ...intrinsicByPhotoId.value,
+    [photoId]: { w, h },
+  }
+}
+
+/**
+ * 橫式：維持原始比例不裁切。
+ * 直式且高寬比 > 3:2（較 2:3 框更「瘦長」）：固定 2:3 + cover 置中裁切。
+ * 其餘直式／正方形：維持原始比例不裁切。
+ */
+function feedPhotoMediaClass(
+  photoId: string,
+): "natural" | "crop-2-3" {
+  const dims = intrinsicByPhotoId.value[photoId]
+  if (!dims) return "natural"
+  const { w, h } = dims
+  if (!w || !h) return "natural"
+  if (w > h) return "natural"
+  if (h > w && h / w > 3 / 2) return "crop-2-3"
+  return "natural"
+}
+
+function feedPhotoLayout(photoId: string) {
+  const crop = feedPhotoMediaClass(photoId) === "crop-2-3"
+  return {
+    linkClass: crop
+      ? "feed-photo-card__media feed-photo-card__media--crop-2-3"
+      : "feed-photo-card__media feed-photo-card__media--natural",
+    imgClass: crop
+      ? "feed-photo-card__img feed-photo-card__img--cover"
+      : "feed-photo-card__img",
+  }
 }
 
 const {
@@ -200,6 +273,10 @@ const {
   error: loadError,
   refresh: refreshFeedData,
 } = await useAsyncData("feed-public-photos-pool", async () => {
+  if (import.meta.client && feedDataCache.value !== null) {
+    return feedDataCache.value
+  }
+
   const { data: photoRows, error: pErr } = await supabase
     .from("photos")
     .select(
@@ -210,7 +287,10 @@ const {
   if (pErr) throw pErr
 
   const rows = (photoRows ?? []) as PhotoRow[]
-  if (!rows.length) return [] as FeedItem[]
+  if (!rows.length) {
+    feedDataCache.value = []
+    return [] as FeedItem[]
+  }
 
   const userIds = [...new Set(rows.map((r) => r.user_id))]
   const { data: profRows, error: prErr } = await supabase
@@ -255,6 +335,7 @@ const {
     }
   })
 
+  feedDataCache.value = items
   return items
 })
 
@@ -263,6 +344,13 @@ const fetchError = computed(() => loadError.value?.message ?? "")
 
 const pool = ref<FeedItem[]>([])
 const displayedRows = ref<FeedDisplayRow[]>([])
+
+const displayedRowsWithPhotoLayout = computed(() =>
+  displayedRows.value.map((row) => ({
+    row,
+    layout: feedPhotoLayout(row.photo.id),
+  })),
+)
 const feedClientReady = ref(false)
 const loadingMore = ref(false)
 
@@ -345,8 +433,24 @@ async function initFeedFromCurrentData() {
   }
 }
 
+/** 從全域快照還原列表（避免返回 Feed 時只剩第一批、高度不足導致捲動還原失效） */
+function applyFeedListSnapshot(snap: FeedListSnapshot) {
+  pool.value = snap.pool.map((it) => ({ ...it, profile: { ...it.profile } }))
+  displayedRows.value = snap.displayedRows.map((r) => ({ ...r, profile: { ...r.profile } }))
+  rowIdSeq = snap.rowIdSeq
+  intrinsicByPhotoId.value = { ...snap.intrinsic }
+}
+
 watch(feedHomeReshuffleTick, async () => {
   feedClientReady.value = false
+  feedDataCache.value = null
+  feedListSnapshot.value = null
+  feedScrollYRestore.value = null
+  try {
+    sessionStorage.removeItem(FEED_SCROLL_STORAGE_KEY)
+  } catch {
+    /* ignore */
+  }
   await refreshFeedData()
   await initFeedFromCurrentData()
   feedClientReady.value = true
@@ -390,16 +494,123 @@ function setupFeedIntersectionObserver() {
   intersectionObserver.observe(el)
 }
 
+function persistFeedNavigationState() {
+  if (import.meta.server) return
+  const y = window.scrollY
+  feedScrollYRestore.value = y
+  try {
+    sessionStorage.setItem(FEED_SCROLL_STORAGE_KEY, String(y))
+  } catch {
+    /* ignore */
+  }
+  if (pool.value.length || displayedRows.value.length) {
+    feedListSnapshot.value = {
+      pool: pool.value.map((it) => ({ ...it, profile: { ...it.profile } })),
+      displayedRows: displayedRows.value.map((r) => ({
+        ...r,
+        profile: { ...r.profile },
+      })),
+      rowIdSeq,
+      intrinsic: { ...intrinsicByPhotoId.value },
+    }
+  }
+}
+
+onBeforeRouteLeave(() => {
+  persistFeedNavigationState()
+})
+
+onBeforeUnmount(() => {
+  persistFeedNavigationState()
+  intersectionObserver?.disconnect()
+  intersectionObserver = null
+})
+
+function pickScrollRestoreTarget(): number | null {
+  if (import.meta.server) return null
+  if (feedScrollYRestore.value != null) {
+    const y = feedScrollYRestore.value
+    feedScrollYRestore.value = null
+    if (Number.isFinite(y) && y >= 0) return y
+  }
+  const raw = sessionStorage.getItem(FEED_SCROLL_STORAGE_KEY)
+  if (raw == null) return null
+  const y = Number.parseFloat(raw)
+  try {
+    sessionStorage.removeItem(FEED_SCROLL_STORAGE_KEY)
+  } catch {
+    /* ignore */
+  }
+  return Number.isFinite(y) && y >= 0 ? y : null
+}
+
+function restoreFeedScrollPosition(targetY: number) {
+  if (import.meta.server) return
+
+  let attempts = 0
+  const maxAttempts = 90
+  const tick = () => {
+    attempts += 1
+    const maxScroll = Math.max(
+      0,
+      document.documentElement.scrollHeight - window.innerHeight,
+    )
+    const y = Math.min(targetY, maxScroll)
+    window.scrollTo({ top: y, left: 0, behavior: "auto" })
+    const closeEnough = Math.abs(window.scrollY - y) <= 8
+    const tallEnough = maxScroll >= targetY - 16
+    if ((closeEnough && tallEnough) || attempts >= maxAttempts) {
+      return
+    }
+    requestAnimationFrame(tick)
+  }
+
+  queueMicrotask(() => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(tick)
+    })
+  })
+}
+
 onMounted(async () => {
-  await initFeedFromCurrentData()
+  const snap = feedListSnapshot.value
+  const canRestoreList =
+    snap &&
+    snap.displayedRows.length > 0 &&
+    baseFeedItems.value.length > 0
+
+  if (import.meta.dev) {
+    console.log("[feed] onMounted scroll / list", {
+      scrollUseState: feedScrollYRestore.value,
+      sessionScroll: import.meta.client
+        ? sessionStorage.getItem(FEED_SCROLL_STORAGE_KEY)
+        : null,
+      hasListSnapshot: !!snap,
+      snapshotRows: snap?.displayedRows.length ?? 0,
+      baseItems: baseFeedItems.value.length,
+      willRestoreList: !!canRestoreList,
+    })
+  }
+
+  if (canRestoreList) {
+    applyFeedListSnapshot(snap)
+    feedListSnapshot.value = null
+  } else {
+    await initFeedFromCurrentData()
+  }
+
   feedClientReady.value = true
   await nextTick()
   setupFeedIntersectionObserver()
-})
+  await nextTick()
 
-onUnmounted(() => {
-  intersectionObserver?.disconnect()
-  intersectionObserver = null
+  const targetY = pickScrollRestoreTarget()
+  if (import.meta.dev) {
+    console.log("[feed] scroll target after pick", { targetY })
+  }
+  if (targetY != null) {
+    restoreFeedScrollPosition(targetY)
+  }
 })
 </script>
 
@@ -450,35 +661,99 @@ onUnmounted(() => {
   background: var(--color-surface);
   overflow: hidden;
   box-shadow: 0 2px 12px rgba(15, 23, 42, 0.06);
-  padding: 0.85rem 1rem 1rem;
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
 }
 
-.feed-photo-card__author-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.6rem;
-  min-width: 0;
+.feed-photo-card__media {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  background: rgba(15, 23, 42, 0.06);
   text-decoration: none;
   color: inherit;
 
-  &:hover .feed-photo-card__name {
+  &:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: -2px;
+  }
+}
+
+.feed-photo-card__media--natural {
+  aspect-ratio: auto;
+}
+
+.feed-photo-card__media--crop-2-3 {
+  aspect-ratio: 2 / 3;
+}
+
+.feed-photo-card__img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.feed-photo-card__img--cover {
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+}
+
+.feed-photo-card__toolbar {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-evenly;
+  gap: 0.25rem;
+  padding: 0.65rem 0.75rem 0.75rem;
+  border-top: 1px solid rgba(15, 23, 42, 0.06);
+}
+
+.feed-photo-card__icon-btn {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: var(--color-text);
+  background: transparent;
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  text-decoration: none;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease;
+
+  &:hover:not(.feed-photo-card__icon-btn--disabled) {
     color: var(--color-accent);
+    background: rgba(37, 99, 235, 0.06);
   }
 
   &:focus-visible {
     outline: 2px solid var(--color-accent);
     outline-offset: 2px;
-    border-radius: 0.35rem;
   }
+}
+
+.feed-photo-card__icon-btn--disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.feed-photo-card__author-link:hover .feed-photo-card__avatar-wrap {
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.25);
 }
 
 .feed-photo-card__avatar-wrap {
   flex-shrink: 0;
-  width: 40px;
-  height: 40px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   overflow: hidden;
   display: flex;
@@ -488,92 +763,15 @@ onUnmounted(() => {
   border: 1px solid var(--color-border);
 }
 
-.feed-photo-card__avatar {
+.feed-photo-card__avatar-img {
   display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
+  object-position: center;
 }
 
-.feed-photo-card__avatar-icon {
+.feed-photo-card__avatar-fallback {
   color: var(--color-text-muted);
-}
-
-.feed-photo-card__name {
-  font-size: 0.9375rem;
-  font-weight: 500;
-  color: var(--color-text);
-  line-height: 1.35;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  transition: color 0.15s ease;
-}
-
-.feed-photo-card__media {
-  width: calc(100% + 2rem);
-  margin-left: -1rem;
-  margin-right: -1rem;
-  border-radius: 8px;
-  overflow: hidden;
-  background: rgba(15, 23, 42, 0.06);
-}
-
-.feed-photo-card__img {
-  display: block;
-  width: 100%;
-  height: auto;
-}
-
-.feed-photo-card__address {
-  margin: 0;
-  font-size: 0.8125rem;
-  line-height: 1.45;
-  color: var(--color-text-muted);
-}
-
-.feed-photo-card__actions {
-  display: flex;
-  flex-direction: row;
-  gap: 0.5rem;
-  align-items: stretch;
-}
-
-.feed-photo-card__btn {
-  flex: 1;
-  box-sizing: border-box;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 2.5rem;
-  padding: 0.4rem 0.65rem;
-  font-size: 0.8125rem;
-  font-weight: 500;
-  text-align: center;
-  text-decoration: none;
-  border-radius: 0.5rem;
-  border: 1px solid rgba(37, 99, 235, 0.35);
-  background: rgba(37, 99, 235, 0.06);
-  color: var(--color-accent);
-  cursor: pointer;
-  transition:
-    background 0.15s ease,
-    border-color 0.15s ease;
-
-  &:hover:not(.feed-photo-card__btn--disabled) {
-    background: rgba(37, 99, 235, 0.12);
-    border-color: var(--color-accent);
-  }
-
-  &:focus-visible {
-    outline: 2px solid var(--color-accent);
-    outline-offset: 2px;
-  }
-}
-
-.feed-photo-card__btn--disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
 }
 </style>

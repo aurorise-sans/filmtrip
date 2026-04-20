@@ -12,9 +12,8 @@
     </p>
     <template v-else-if="pageData">
       <header class="trip-detail__header">
-        <div class="trip-detail__header-row">
-          <NuxtLink class="trip-detail__back" to="/profile">← 返回個人</NuxtLink>
-          <div v-if="isOwner" class="trip-detail__header-actions">
+        <div v-if="isOwner" class="trip-detail__header-row">
+          <div class="trip-detail__header-actions">
             <template v-if="!isEditing">
               <button
                 type="button"
@@ -958,7 +957,7 @@ function formatDate(isoDate: string) {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-end;
     gap: 0.75rem 1rem;
     margin-bottom: 0.75rem;
   }
@@ -969,6 +968,7 @@ function formatDate(isoDate: string) {
     align-items: center;
     justify-content: flex-end;
     gap: 0.5rem;
+    margin-left: auto;
   }
 
   &__btn {
@@ -1208,18 +1208,6 @@ function formatDate(isoDate: string) {
     color: var(--color-danger);
     background: var(--color-danger-bg);
     border-radius: 0.375rem;
-  }
-
-  &__back {
-    display: inline-block;
-    margin-bottom: 0.75rem;
-    font-size: 0.9375rem;
-    color: var(--color-accent);
-    text-decoration: none;
-
-    &:hover {
-      text-decoration: underline;
-    }
   }
 
   &__title {

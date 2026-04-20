@@ -27,8 +27,8 @@ export default defineNuxtConfig({
     redirectOptions: {
       login: "/login",
       callback: "/confirm",
-      // 未登入仍可瀏覽 Feed（/）與地圖（/map）；其餘頁面需登入（可依需求調整）
-      exclude: ["/", "/map", "/login"],
+      // 未登入仍可瀏覽 Feed（/）、地圖（/map）、附近照片（/nearby/*）；其餘頁面需登入（可依需求調整）
+      exclude: ["/", "/map", "/login", "/nearby/*"],
     },
     cookieOptions: {
       maxAge: 60 * 60 * 8,

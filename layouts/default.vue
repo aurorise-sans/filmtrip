@@ -1,7 +1,20 @@
 <template>
   <div class="layout-default">
     <header class="layout-default__header">
-      <div class="layout-default__header-start" aria-hidden="true" />
+      <div
+        class="layout-default__header-start"
+        :aria-hidden="showLayoutHeaderBack ? undefined : true"
+      >
+        <button
+          v-if="showLayoutHeaderBack"
+          type="button"
+          class="layout-default__header-back"
+          aria-label="返回"
+          @click="onLayoutHeaderBack"
+        >
+          <ChevronLeft :size="22" aria-hidden="true" />
+        </button>
+      </div>
       <NuxtLink class="layout-default__brand" to="/">Filmtrip</NuxtLink>
       <div class="layout-default__header-end">
         <NuxtLink
@@ -82,10 +95,39 @@
 </template>
 
 <script setup lang="ts">
-import { Home, Map, Plus, Settings, User } from "lucide-vue-next"
+import { ChevronLeft, Home, Map, Plus, Settings, User } from "lucide-vue-next"
 
 const route = useRoute()
+const router = useRouter()
 const user = useSupabaseUser()
+
+/** `null`：依路由自動（例如 `/profile/:id` 顯示返回）；`true`/`false` 強制覆寫 */
+const layoutHeaderBackOverride = useState<boolean | null>(
+  "layout-header-back-override",
+  () => null,
+)
+
+watch(
+  () => route.fullPath,
+  () => {
+    layoutHeaderBackOverride.value = null
+  },
+)
+
+const showLayoutHeaderBack = computed(() => {
+  const o = layoutHeaderBackOverride.value
+  if (o === true) return true
+  if (o === false) return false
+  const parts = route.path.split("/").filter(Boolean)
+  if (parts.length === 2 && parts[0] === "profile") return true
+  if (parts.length === 2 && parts[0] === "trips") return true
+  if (parts.length === 2 && parts[0] === "nearby") return true
+  return false
+})
+
+function onLayoutHeaderBack() {
+  router.back()
+}
 
 const profileSettingsOpen = useState("profile-settings-open", () => false)
 const isProfilePage = computed(() => route.path === "/profile")
@@ -147,6 +189,35 @@ watch(
   &__header-start {
     justify-self: start;
     min-width: 0;
+  }
+
+  &__header-back {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    margin-left: -0.35rem;
+    padding: 0;
+    font: inherit;
+    color: var(--color-text);
+    background: transparent;
+    border: none;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    transition:
+      color 0.15s ease,
+      background 0.15s ease;
+
+    &:hover {
+      color: var(--color-accent);
+      background: rgba(37, 99, 235, 0.06);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--color-accent);
+      outline-offset: 2px;
+    }
   }
 
   &__header-end {

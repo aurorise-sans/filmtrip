@@ -75,10 +75,24 @@
               <button
                 type="button"
                 class="feed-photo-card__icon-btn"
+                :class="{
+                  'feed-photo-card__icon-btn--bookmarked': isPhotoBookmarkedByMe(
+                    row.photo.id,
+                  ),
+                }"
                 aria-label="收藏"
-                @click="onFeedBookmarkClick"
+                :aria-pressed="isPhotoBookmarkedByMe(row.photo.id)"
+                @click="onFeedBookmarkClick(row.photo.id)"
               >
-                <Bookmark :size="22" aria-hidden="true" />
+                <Bookmark
+                  :size="22"
+                  aria-hidden="true"
+                  :fill="
+                    isPhotoBookmarkedByMe(row.photo.id)
+                      ? 'currentColor'
+                      : 'none'
+                  "
+                />
               </button>
               <NuxtLink
                 class="feed-photo-card__icon-btn feed-photo-card__author-link"
@@ -117,6 +131,16 @@
           ref="feedSentinel"
           class="feed-page__sentinel"
           aria-hidden="true"
+        />
+
+        <CollectionSheet
+          v-if="bookmarkSheetPhotoId"
+          :photo-id="bookmarkSheetPhotoId"
+          :open="bookmarkSheetOpen"
+          :feed-collections="userCollections"
+          @close="bookmarkSheetOpen = false"
+          @closed="onBookmarkSheetClosed"
+          @saved="onBookmarkSaved"
         />
       </template>
     </template>
@@ -216,6 +240,15 @@ const user = useSupabaseUser()
 const likeCountByPhotoId = ref<Record<string, number>>({})
 /** 目前登入者是否已對該照片按讚 */
 const likedByMeByPhotoId = ref<Record<string, boolean>>({})
+/** 目前登入者的收藏夾（Feed 預載；與 Sheet 內查詢一致） */
+const userCollections = ref<
+  { id: string; name: string; created_at: string }[]
+>([])
+/** 該照片是否出現在目前使用者的任一收藏夾 */
+const bookmarkedByMeByPhotoId = ref<Record<string, boolean>>({})
+
+const bookmarkSheetOpen = ref(false)
+const bookmarkSheetPhotoId = ref<string | null>(null)
 
 const feedHomeReshuffleTick = useState("feed-home-reshuffle-tick", () => 0)
 
@@ -294,6 +327,10 @@ function isPhotoLikedByMe(photoId: string): boolean {
   return !!likedByMeByPhotoId.value[photoId]
 }
 
+function isPhotoBookmarkedByMe(photoId: string): boolean {
+  return !!bookmarkedByMeByPhotoId.value[photoId]
+}
+
 /**
  * 依 Feed 內照片 id 從 DB 載入按讚數與目前使用者是否已按讚。
  * 應在瀏覽器端呼叫（含 onMounted），以取得正確的 auth session。
@@ -341,6 +378,66 @@ async function fetchFeedLikeMeta(photoIds: string[]) {
 
   likeCountByPhotoId.value = counts
   likedByMeByPhotoId.value = liked
+}
+
+async function fetchUserCollections() {
+  const {
+    data: { user: u },
+  } = await supabase.auth.getUser()
+  if (!u) {
+    userCollections.value = []
+    return
+  }
+  const { data: rows, error } = await supabase
+    .from("collections")
+    .select("id, name, created_at")
+    .order("created_at", { ascending: true })
+  if (error) throw error
+  userCollections.value = (rows ?? []) as {
+    id: string
+    name: string
+    created_at: string
+  }[]
+}
+
+/**
+ * 依 Feed 內照片 id 載入「是否曾被本人加入任一收藏夾」。
+ * 僅在瀏覽器端、登入狀態下有意義。
+ */
+async function fetchFeedBookmarkMeta(photoIds: string[]) {
+  const uniq = [...new Set(photoIds)]
+  if (!uniq.length) {
+    bookmarkedByMeByPhotoId.value = {}
+    return
+  }
+
+  const {
+    data: { user: u },
+  } = await supabase.auth.getUser()
+  if (!u) {
+    bookmarkedByMeByPhotoId.value = {}
+    return
+  }
+
+  const saved: Record<string, boolean> = {}
+  for (let i = 0; i < uniq.length; i += LIKE_META_CHUNK) {
+    const chunk = uniq.slice(i, i + LIKE_META_CHUNK)
+    const { data: itemRows, error } = await supabase
+      .from("collection_items")
+      .select("photo_id")
+      .in("photo_id", chunk)
+    if (error) throw error
+    for (const row of itemRows ?? []) {
+      saved[(row as { photo_id: string }).photo_id] = true
+    }
+  }
+
+  bookmarkedByMeByPhotoId.value = saved
+}
+
+async function refreshFeedCollectionContext(photoIds: string[]) {
+  await fetchUserCollections()
+  await fetchFeedBookmarkMeta(photoIds)
 }
 
 async function onFeedLikeClick(photoId: string) {
@@ -398,10 +495,33 @@ async function onFeedMapClick(photoId: string) {
   await navigateTo(`/nearby/${photoId}`)
 }
 
-async function onFeedBookmarkClick() {
+async function onFeedBookmarkClick(photoId: string) {
   if (!user.value) {
     await navigateTo("/login")
     return
+  }
+  bookmarkSheetPhotoId.value = photoId
+  bookmarkSheetOpen.value = true
+}
+
+function onBookmarkSheetClosed() {
+  bookmarkSheetPhotoId.value = null
+}
+
+async function onBookmarkSaved(payload: {
+  photoId: string
+  isBookmarked: boolean
+}) {
+  bookmarkedByMeByPhotoId.value = {
+    ...bookmarkedByMeByPhotoId.value,
+    [payload.photoId]: payload.isBookmarked,
+  }
+  try {
+    await refreshFeedCollectionContext(
+      baseFeedItems.value.map((it) => it.photo.id),
+    )
+  } catch {
+    /* ignore */
   }
 }
 
@@ -592,7 +712,9 @@ watch(feedHomeReshuffleTick, async () => {
   await refreshFeedData()
   await initFeedFromCurrentData()
   if (import.meta.client) {
-    await fetchFeedLikeMeta(baseFeedItems.value.map((it) => it.photo.id))
+    const ids = baseFeedItems.value.map((it) => it.photo.id)
+    await fetchFeedLikeMeta(ids)
+    await refreshFeedCollectionContext(ids)
   }
   feedClientReady.value = true
   await nextTick()
@@ -713,11 +835,24 @@ function restoreFeedScrollPosition(targetY: number) {
   })
 }
 
+watch(user, async () => {
+  if (!import.meta.client || !baseFeedItems.value.length) return
+  const ids = baseFeedItems.value.map((it) => it.photo.id)
+  try {
+    await fetchFeedLikeMeta(ids)
+    await refreshFeedCollectionContext(ids)
+  } catch {
+    /* ignore */
+  }
+})
+
 onMounted(async () => {
   await nextTick()
   /** 瀏覽器端 session 就緒後從 DB 重抓按讚（不依賴 SSR / useAsyncData 快取） */
   if (import.meta.client) {
-    await fetchFeedLikeMeta(baseFeedItems.value.map((it) => it.photo.id))
+    const ids = baseFeedItems.value.map((it) => it.photo.id)
+    await fetchFeedLikeMeta(ids)
+    await refreshFeedCollectionContext(ids)
   }
 
   const snap = feedListSnapshot.value
@@ -899,6 +1034,15 @@ onMounted(async () => {
   &:hover:not(.feed-photo-card__icon-btn--disabled) {
     color: #b91c1c;
     background: rgba(220, 38, 38, 0.08);
+  }
+}
+
+.feed-photo-card__icon-btn--bookmarked {
+  color: var(--color-accent);
+
+  &:hover:not(.feed-photo-card__icon-btn--disabled) {
+    color: var(--color-accent-hover);
+    background: rgba(15, 23, 42, 0.06);
   }
 }
 

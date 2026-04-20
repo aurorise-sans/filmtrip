@@ -125,6 +125,44 @@ export interface Database {
         }
         Relationships: []
       }
+      collections: {
+        Row: {
+          id: string
+          user_id: string
+          name: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          name: string
+          created_at?: string
+        }
+        Update: {
+          name?: string
+          created_at?: string
+        }
+        Relationships: []
+      }
+      collection_items: {
+        Row: {
+          id: string
+          collection_id: string
+          photo_id: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          collection_id: string
+          photo_id: string
+          created_at?: string
+        }
+        Update: {
+          collection_id?: string
+          photo_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: Record<string, never>
     Functions: Record<string, never>

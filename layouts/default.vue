@@ -76,6 +76,14 @@
         <span class="layout-default__appbar-sr">建立旅程</span>
       </NuxtLink>
       <NuxtLink
+        class="layout-default__appbar-btn"
+        :class="{ 'layout-default__appbar-btn--active': collectionsActive }"
+        to="/collections"
+      >
+        <Bookmark :size="24" aria-hidden="true" />
+        <span class="layout-default__appbar-sr">收藏</span>
+      </NuxtLink>
+      <NuxtLink
         class="layout-default__appbar-btn layout-default__appbar-btn--profile"
         :class="{ 'layout-default__appbar-btn--active': profileActive }"
         to="/profile"
@@ -96,7 +104,15 @@
 </template>
 
 <script setup lang="ts">
-import { ChevronLeft, Home, Map, Plus, Settings, User } from "lucide-vue-next"
+import {
+  Bookmark,
+  ChevronLeft,
+  Home,
+  Map,
+  Plus,
+  Settings,
+  User,
+} from "lucide-vue-next"
 
 const route = useRoute()
 const router = useRouter()
@@ -124,6 +140,7 @@ const showLayoutHeaderBack = computed(() => {
   if (parts.length === 2 && parts[0] === "trips") return true
   if (parts.length === 2 && parts[0] === "nearby") return true
   if (parts.length === 2 && parts[0] === "photos") return true
+  if (parts.length === 2 && parts[0] === "collections") return true
   return false
 })
 
@@ -160,6 +177,10 @@ function onMapNavClick(e: MouseEvent) {
 const homeActive = computed(() => route.path === "/")
 const mapActive = computed(() => route.path === "/map")
 const plusActive = computed(() => route.path === "/trips/new")
+const collectionsActive = computed(
+  () =>
+    route.path === "/collections" || route.path.startsWith("/collections/"),
+)
 const profileActive = computed(() => route.path.startsWith("/profile"))
 
 onMounted(() => {

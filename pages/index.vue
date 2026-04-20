@@ -55,14 +55,15 @@
                   "
                 />
               </button>
-              <NuxtLink
+              <button
                 v-if="row.hasCoords"
+                type="button"
                 class="feed-photo-card__icon-btn"
-                :to="`/nearby/${row.photo.id}`"
                 aria-label="附近照片地圖"
+                @click="onFeedMapClick(row.photo.id)"
               >
                 <MapIcon :size="22" aria-hidden="true" />
-              </NuxtLink>
+              </button>
               <span
                 v-else
                 class="feed-photo-card__icon-btn feed-photo-card__icon-btn--disabled"
@@ -75,6 +76,7 @@
                 type="button"
                 class="feed-photo-card__icon-btn"
                 aria-label="收藏"
+                @click="onFeedBookmarkClick"
               >
                 <Bookmark :size="22" aria-hidden="true" />
               </button>
@@ -208,6 +210,7 @@ const MAX_PHOTOS_PER_TRIP = 3
 const MAX_PHOTOS_PER_AUTHOR_PER_BATCH = 3
 
 const supabase = useSupabaseClient()
+const user = useSupabaseUser()
 
 /** 各照片按讚總數（UI 暫不顯示，供樂觀更新與資料正確性） */
 const likeCountByPhotoId = ref<Record<string, number>>({})
@@ -341,14 +344,12 @@ async function fetchFeedLikeMeta(photoIds: string[]) {
 }
 
 async function onFeedLikeClick(photoId: string) {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) {
+  if (!user.value) {
     await navigateTo("/login")
     return
   }
 
+  const uid = user.value.id
   const prevLiked = !!likedByMeByPhotoId.value[photoId]
   const prevCount = likeCountByPhotoId.value[photoId] ?? 0
   const nextLiked = !prevLiked
@@ -365,7 +366,7 @@ async function onFeedLikeClick(photoId: string) {
   try {
     if (nextLiked) {
       const { error } = await supabase.from("likes").insert({
-        user_id: user.id,
+        user_id: uid,
         photo_id: photoId,
       })
       if (error) throw error
@@ -373,7 +374,7 @@ async function onFeedLikeClick(photoId: string) {
       const { error } = await supabase
         .from("likes")
         .delete()
-        .eq("user_id", user.id)
+        .eq("user_id", uid)
         .eq("photo_id", photoId)
       if (error) throw error
     }
@@ -386,6 +387,21 @@ async function onFeedLikeClick(photoId: string) {
       ...likeCountByPhotoId.value,
       [photoId]: prevCount,
     }
+  }
+}
+
+async function onFeedMapClick(photoId: string) {
+  if (!user.value) {
+    await navigateTo("/login")
+    return
+  }
+  await navigateTo(`/nearby/${photoId}`)
+}
+
+async function onFeedBookmarkClick() {
+  if (!user.value) {
+    await navigateTo("/login")
+    return
   }
 }
 

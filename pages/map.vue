@@ -330,6 +330,8 @@ const layoutHeaderBackOverride = useState<boolean | null>(
 const DEFAULT_MAP_CENTER: [number, number] = [121.5, 24.25]
 const DEFAULT_MAP_ZOOM = 6.5
 const GEOCODE_FLY_ZOOM = 16
+/** 大於等於此 zoom 時每張照片各一個縮圖標記，不聚合 */
+const PHOTO_MARKERS_FULL_DETAIL_ZOOM = 16
 /** 從 /map?lat=&lng=、定位按鈕、Navbar 地圖再點、初始定位成功時的目標 zoom */
 const QUERY_PHOTO_FLY_ZOOM = 16
 
@@ -406,6 +408,8 @@ const tripPhotoLightboxCaptions = computed(() =>
 
 let map: MapLibreMap | null = null
 const markers: MapLibreMarker[] = []
+/** `moveend` 時重算照片聚合標記，卸載時需 off */
+let photoMarkersMoveEndHandler: (() => void) | null = null
 let geocodeSearchMarker: MapLibreMarker | null = null
 let tripSummaryById = new Map<string, TripSummary>()
 
@@ -720,33 +724,101 @@ type AggregatedMapPhoto = {
   count: number
 }
 
-function aggregatePhotoPointsByLocation(points: PhotoPoint[]): AggregatedMapPhoto[] {
-  const groups = new Map<
-    string,
-    { lng: number; lat: number; imageUrl: string; photoId: string; count: number }
-  >()
-  for (const p of points) {
-    const key = `${p.lat.toFixed(6)},${p.lng.toFixed(6)}`
-    const g = groups.get(key)
-    if (!g) {
-      groups.set(key, {
-        lng: p.lng,
-        lat: p.lat,
-        imageUrl: p.imageUrl,
-        photoId: p.id,
-        count: 1,
-      })
-    } else {
-      g.count++
+/** 依目前 zoom 決定畫面上聚合半徑（像素）：zoom 越低半徑越大、越容易合併 */
+function clusterRadiusPxForZoom(zoom: number): number {
+  return Math.min(96, Math.max(36, 120 - zoom * 5))
+}
+
+/**
+ * 以畫面像素距離聚合（union-find）。zoom ≥ PHOTO_MARKERS_FULL_DETAIL_ZOOM 時不聚合。
+ */
+function clusterPhotoPointsForViewport(
+  points: PhotoPoint[],
+  zoom: number,
+  project: (lngLat: [number, number]) => { x: number; y: number },
+): AggregatedMapPhoto[] {
+  if (points.length === 0) return []
+  if (zoom >= PHOTO_MARKERS_FULL_DETAIL_ZOOM) {
+    return points.map((p) => ({
+      lng: p.lng,
+      lat: p.lat,
+      imageUrl: p.imageUrl,
+      photoId: p.id,
+      count: 1,
+    }))
+  }
+
+  const R = clusterRadiusPxForZoom(zoom)
+  const R2 = R * R
+  const projected = points.map((p) => {
+    const pt = project([p.lng, p.lat])
+    return { x: pt.x, y: pt.y, p }
+  })
+
+  const n = projected.length
+  const parent = Array.from({ length: n }, (_, i) => i)
+
+  function find(i: number): number {
+    if (parent[i] !== i) parent[i] = find(parent[i])
+    return parent[i]
+  }
+
+  function union(a: number, b: number) {
+    const ra = find(a)
+    const rb = find(b)
+    if (ra !== rb) parent[ra] = rb
+  }
+
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      const dx = projected[i].x - projected[j].x
+      const dy = projected[i].y - projected[j].y
+      if (dx * dx + dy * dy <= R2) union(i, j)
     }
   }
-  return [...groups.values()]
+
+  const byRoot = new Map<number, typeof projected>()
+  for (let i = 0; i < n; i++) {
+    const r = find(i)
+    if (!byRoot.has(r)) byRoot.set(r, [])
+    byRoot.get(r)!.push(projected[i])
+  }
+
+  const out: AggregatedMapPhoto[] = []
+  for (const group of byRoot.values()) {
+    const count = group.length
+    const first = group[0].p
+    let lng = 0
+    let lat = 0
+    for (const { p } of group) {
+      lng += p.lng
+      lat += p.lat
+    }
+    lng /= count
+    lat /= count
+    out.push({
+      lng,
+      lat,
+      imageUrl: first.imageUrl,
+      photoId: first.id,
+      count,
+    })
+  }
+  return out
+}
+
+function clearPhotoMarkers() {
+  for (const m of markers) {
+    m.remove()
+  }
+  markers.length = 0
 }
 
 function createMapPhotoMarkerElement(
   imageUrl: string,
   photoId: string,
   count: number,
+  onClusterClick: (() => void) | null,
 ): HTMLElement {
   const el = document.createElement("div")
   const safeUrl = imageUrl.replace(/\\/g, "\\\\").replace(/"/g, '\\"')
@@ -759,21 +831,19 @@ function createMapPhotoMarkerElement(
   el.style.border = "2px solid white"
   el.style.cursor = "pointer"
   el.style.boxShadow = "0 2px 4px rgba(0,0,0,0.3)"
-  el.setAttribute(
-    "role",
-    "button",
-  )
-  el.setAttribute(
-    "tabindex",
-    "0",
-  )
+  el.setAttribute("role", "button")
+  el.setAttribute("tabindex", "0")
   el.setAttribute(
     "aria-label",
-    count > 1 ? `此位置有 ${count} 張照片，開啟第一張` : "開啟照片",
+    count > 1 ? `此位置有 ${count} 張照片，點擊放大` : "開啟照片",
   )
 
   el.addEventListener("click", (e) => {
     e.stopPropagation()
+    if (count > 1 && onClusterClick) {
+      onClusterClick()
+      return
+    }
     void navigateTo(`/photos/${photoId}`)
   })
 
@@ -782,8 +852,9 @@ function createMapPhotoMarkerElement(
     const badge = document.createElement("div")
     badge.textContent = String(count)
     badge.style.position = "absolute"
-    badge.style.top = "-4px"
+    badge.style.bottom = "-4px"
     badge.style.right = "-4px"
+    badge.style.top = "auto"
     badge.style.minWidth = "1.1rem"
     badge.style.padding = "2px 5px"
     badge.style.fontSize = "10px"
@@ -800,6 +871,53 @@ function createMapPhotoMarkerElement(
   }
 
   return el
+}
+
+function updatePhotoMarkers(maplibregl: MapLibreGlobal) {
+  if (!map) return
+  clearPhotoMarkers()
+  const pts = photoPoints.value
+  if (!pts.length) return
+
+  const mapProj = map as unknown as {
+    getZoom: () => number
+    project: (lngLat: [number, number]) => { x: number; y: number }
+  }
+  const z = mapProj.getZoom()
+  const aggregated = clusterPhotoPointsForViewport(pts, z, (lngLat) =>
+    mapProj.project(lngLat),
+  )
+
+  for (const p of aggregated) {
+    const onCluster =
+      p.count > 1
+        ? () => {
+            if (!map) return
+            const zz = (
+              map as unknown as { getZoom: () => number }
+            ).getZoom()
+            map.flyTo({
+              center: [p.lng, p.lat],
+              zoom: Math.min(zz + 2, 24),
+              essential: true,
+            })
+          }
+        : null
+
+    const el = createMapPhotoMarkerElement(
+      p.imageUrl,
+      p.photoId,
+      p.count,
+      onCluster,
+    )
+    const marker = new maplibregl.Marker({
+      element: el,
+      anchor: "bottom",
+    })
+      .setLngLat([p.lng, p.lat])
+      .addTo(map)
+    markers.push(marker)
+  }
 }
 
 function formatDate(value: string) {
@@ -1011,22 +1129,11 @@ onMounted(async () => {
     if (!map) return
     loading.value = false
 
-    const aggregated = aggregatePhotoPointsByLocation(photoPoints.value)
-    for (const p of aggregated) {
-      const el = createMapPhotoMarkerElement(
-        p.imageUrl,
-        p.photoId,
-        p.count,
-      )
-      const marker = new maplibregl.Marker({
-        element: el,
-        anchor: "bottom",
-      })
-        .setLngLat([p.lng, p.lat])
-        .addTo(map!)
-
-      markers.push(marker)
+    photoMarkersMoveEndHandler = () => {
+      updatePhotoMarkers(maplibregl)
     }
+    map.on("moveend", photoMarkersMoveEndHandler)
+    updatePhotoMarkers(maplibregl)
   })
 })
 
@@ -1044,10 +1151,14 @@ onBeforeUnmount(() => {
   if (geocodeDebounceTimer) clearTimeout(geocodeDebounceTimer)
   if (geocodeBlurTimer) clearTimeout(geocodeBlurTimer)
   removeGeocodeSearchMarker()
-  for (const m of markers) {
-    m.remove()
+  if (map && photoMarkersMoveEndHandler) {
+    const m = map as unknown as {
+      off: (type: string, listener: () => void) => void
+    }
+    m.off("moveend", photoMarkersMoveEndHandler)
+    photoMarkersMoveEndHandler = null
   }
-  markers.length = 0
+  clearPhotoMarkers()
   map?.remove()
   map = null
 })
@@ -1475,5 +1586,5 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 
-/* 照片縮圖標記改以 JS 內聯樣式建立單一 div（見 createMapPhotoMarkerElement） */
+/* 照片縮圖標記：createMapPhotoMarkerElement 內聯樣式 */
 </style>

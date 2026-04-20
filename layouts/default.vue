@@ -122,6 +122,7 @@ const showLayoutHeaderBack = computed(() => {
   if (parts.length === 2 && parts[0] === "profile") return true
   if (parts.length === 2 && parts[0] === "trips") return true
   if (parts.length === 2 && parts[0] === "nearby") return true
+  if (parts.length === 2 && parts[0] === "photos") return true
   return false
 })
 

@@ -1,36 +1,41 @@
 <template>
   <div class="nearby-page">
-    <p v-if="pending" class="nearby-page__hint">載入中…</p>
+    <p v-if="pending" class="nearby-page__hint nearby-page__section--padded">
+      載入中…
+    </p>
     <p v-else-if="loadError" class="nearby-page__error" role="alert">
       {{ loadError }}
     </p>
     <template v-else-if="centerPhoto">
-      <p v-if="!hasCenterCoords" class="nearby-page__hint">
+      <p
+        v-if="!hasCenterCoords"
+        class="nearby-page__hint nearby-page__section--padded"
+      >
         此照片沒有座標，無法顯示附近地圖。
       </p>
       <template v-else>
-        <p class="nearby-page__address">
-          {{ addressLine ?? "無地址資訊" }}
-        </p>
-        <a
-          class="nearby-page__gmaps"
-          :href="googleMapsUrl(centerPhoto.latitude!, centerPhoto.longitude!)"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          在 Google Maps 開啟
-        </a>
-        <ClientOnly>
-          <div ref="mapContainer" class="nearby-page__map" />
-          <template #fallback>
-            <div class="nearby-page__map-fallback">地圖載入中…</div>
-          </template>
-        </ClientOnly>
-        <ul
-          v-if="nearbyThumbs.length"
-          class="nearby-page__grid"
-          aria-label="附近照片"
-        >
+        <div class="nearby-page__map-bleed">
+          <ClientOnly>
+            <div ref="mapContainer" class="nearby-page__map" />
+            <template #fallback>
+              <div class="nearby-page__map-fallback">地圖載入中…</div>
+            </template>
+          </ClientOnly>
+        </div>
+        <div class="nearby-page__below-map nearby-page__section--padded">
+          <p class="nearby-page__address">
+            {{ addressLine ?? "無地址資訊" }}
+          </p>
+          <a
+            class="nearby-page__gmaps"
+            :href="googleMapsUrl(centerPhoto.latitude!, centerPhoto.longitude!)"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            在 Google Maps 開啟
+          </a>
+        </div>
+        <ul class="nearby-page__grid" aria-label="附近照片">
           <li
             v-for="p in nearbyThumbs"
             :key="p.id"
@@ -38,7 +43,7 @@
           >
             <NuxtLink
               class="nearby-page__thumb-link"
-              :to="`/trips/${p.trip_id}`"
+              :to="`/photos/${p.id}`"
             >
               <img
                 class="nearby-page__thumb-img"
@@ -50,14 +55,17 @@
             </NuxtLink>
           </li>
         </ul>
-        <p v-else class="nearby-page__hint nearby-page__hint--muted">
-          500 公尺內沒有其他公開照片。
+        <p
+          v-if="!nearbyPhotos.length"
+          class="nearby-page__hint nearby-page__hint--muted nearby-page__section--padded nearby-page__hint--below-grid"
+        >
+          附近沒有其他公開照片。
         </p>
       </template>
     </template>
     <p
       v-else-if="!pending && !loadError"
-      class="nearby-page__hint"
+      class="nearby-page__hint nearby-page__section--padded"
     >
       找不到此照片或旅程未公開。
     </p>
@@ -192,8 +200,12 @@ const nearbyPhotos = computed(() => {
   return out
 })
 
-/** 網格顯示：含中心點附近其他照片（不含中心本身） */
-const nearbyThumbs = computed(() => nearbyPhotos.value)
+/** 網格：觸發照片置頂，其餘為 500 公尺內其他公開照片 */
+const nearbyThumbs = computed((): PhotoWithTrip[] => {
+  const c = centerPhoto.value
+  if (!c || c.latitude == null || c.longitude == null) return []
+  return [c, ...nearbyPhotos.value]
+})
 
 const mapContainer = ref<HTMLElement | null>(null)
 let map: MapLibreMap | null = null
@@ -267,7 +279,7 @@ watch(
       style: OPENFREEMAP_LIBERTY_STYLE,
       center: [clng, clat],
       zoom: 14,
-      attributionControl: true,
+      attributionControl: false,
     })
 
     map.addControl(new maplibregl.NavigationControl(), "top-right")
@@ -348,7 +360,26 @@ watch(
   box-sizing: border-box;
   max-width: 32rem;
   margin: 0 auto;
-  padding: 1rem 1.25rem 2rem;
+  padding: 1rem 0 2rem;
+}
+
+.nearby-page__section--padded {
+  padding-left: 1.25rem;
+  padding-right: 1.25rem;
+  box-sizing: border-box;
+}
+
+.nearby-page__map-bleed {
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
+  margin-right: calc(50% - 50vw);
+  box-sizing: border-box;
+}
+
+.nearby-page__below-map {
+  padding-top: 0.75rem;
+  padding-bottom: 0.85rem;
+  box-sizing: border-box;
 }
 
 .nearby-page__hint {
@@ -359,10 +390,14 @@ watch(
   &--muted {
     color: var(--color-text-muted);
   }
+
+  &--below-grid {
+    margin-top: 0.5rem;
+  }
 }
 
 .nearby-page__error {
-  margin: 0;
+  margin: 0 1.25rem;
   padding: 0.65rem 0.75rem;
   font-size: 0.875rem;
   color: var(--color-danger);
@@ -378,10 +413,12 @@ watch(
 }
 
 .nearby-page__gmaps {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 0.85rem;
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0;
   padding: 0.45rem 0.85rem;
   font-size: 0.875rem;
   font-weight: 500;
@@ -408,27 +445,30 @@ watch(
 .nearby-page__map {
   width: 100%;
   height: min(52vh, 22rem);
-  border-radius: 0.75rem;
+  border-radius: 0;
   overflow: hidden;
-  border: 1px solid var(--color-border);
+  border: none;
+  border-top: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
   background: rgba(15, 23, 42, 0.06);
-  margin-bottom: 1rem;
 }
 
 .nearby-page__map-fallback {
-  margin: 0 0 1rem;
+  margin: 0;
   padding: 2rem 1rem;
   font-size: 0.875rem;
   color: var(--color-text-muted);
   text-align: center;
-  border: 1px dashed var(--color-border);
-  border-radius: 0.75rem;
+  border: none;
+  border-top: 1px dashed var(--color-border);
+  border-bottom: 1px dashed var(--color-border);
 }
 
 .nearby-page__grid {
   list-style: none;
   margin: 0;
-  padding: 0;
+  padding: 0 1.25rem;
+  box-sizing: border-box;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 0.5rem;

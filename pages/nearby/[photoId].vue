@@ -417,7 +417,7 @@ watch(
   box-sizing: border-box;
   max-width: 32rem;
   margin: 0 auto;
-  padding: 1rem 0 2rem;
+  padding: 0 0 1rem;
 }
 
 .nearby-page__section--padded {

@@ -55,6 +55,23 @@
 
       <div class="map-page__body">
         <div ref="mapContainerEl" class="map-page__canvas" />
+        <div class="map-page__locate-stack">
+          <button
+            type="button"
+            class="map-page__locate-btn"
+            aria-label="定位到目前位置"
+            @click="onLocateMeClick"
+          >
+            <Locate :size="18" aria-hidden="true" />
+          </button>
+          <p
+            v-if="locateError"
+            class="map-page__locate-hint"
+            role="alert"
+          >
+            {{ locateError }}
+          </p>
+        </div>
         <div v-if="loading" class="map-page__overlay" aria-busy="true">
           <span class="map-page__overlay-text">載入中…</span>
         </div>
@@ -182,11 +199,160 @@
 </template>
 
 <script setup lang="ts">
-import { GalleryHorizontal, LayoutGrid, X } from "lucide-vue-next"
+import { GalleryHorizontal, LayoutGrid, Locate, X } from "lucide-vue-next"
+import { onBeforeRouteLeave } from "vue-router"
+
+const MAP_VIEW_STORAGE_KEY = "filmtrip-map-camera"
 
 definePageMeta({
   ssr: false,
+  /** 避免 router 強制捲到頂（地圖頁由 body overflow 控制捲動） */
+  scrollToTop: false,
 })
+
+type MapCameraRestore = {
+  lng: number
+  lat: number
+  zoom: number
+}
+
+/** 離開地圖後 SPA 返回時還原視角（整頁重新整理時以 sessionStorage 備援） */
+const mapCameraRestore = useState<MapCameraRestore | null>(
+  "map-camera-restore",
+  () => null,
+)
+
+/** 與 `plugins/map-enter-from.client.ts` 共用：進入 /map 前所在頁 path */
+const mapEnterFrom = useState<string | null>("map-enter-from", () => null)
+
+function isValidMapCamera(s: MapCameraRestore): boolean {
+  return (
+    Number.isFinite(s.lng) &&
+    Number.isFinite(s.lat) &&
+    Number.isFinite(s.zoom) &&
+    s.lat >= -90 &&
+    s.lat <= 90 &&
+    s.lng >= -180 &&
+    s.lng <= 180 &&
+    s.zoom >= 0 &&
+    s.zoom <= 24
+  )
+}
+
+function persistMapCameraState() {
+  if (import.meta.server) return
+  if (!map) return
+  const c = map.getCenter()
+  const z = map.getZoom()
+  const snap: MapCameraRestore = {
+    lng: c.lng,
+    lat: c.lat,
+    zoom: z,
+  }
+  mapCameraRestore.value = snap
+  try {
+    sessionStorage.setItem(MAP_VIEW_STORAGE_KEY, JSON.stringify(snap))
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * 優先讀 useState，其次 sessionStorage；讀取後清空 useState 並移除 session。
+ */
+function pickMapCameraRestore(): MapCameraRestore | null {
+  if (import.meta.server) return null
+
+  if (mapCameraRestore.value != null) {
+    const s = mapCameraRestore.value
+    mapCameraRestore.value = null
+    try {
+      sessionStorage.removeItem(MAP_VIEW_STORAGE_KEY)
+    } catch {
+      /* ignore */
+    }
+    if (isValidMapCamera(s)) return s
+  }
+
+  let raw: string | null = null
+  try {
+    raw = sessionStorage.getItem(MAP_VIEW_STORAGE_KEY)
+  } catch {
+    return null
+  }
+  if (raw == null) return null
+  try {
+    sessionStorage.removeItem(MAP_VIEW_STORAGE_KEY)
+  } catch {
+    /* ignore */
+  }
+  try {
+    const parsed = JSON.parse(raw) as unknown
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      "lng" in parsed &&
+      "lat" in parsed &&
+      "zoom" in parsed
+    ) {
+      const s = parsed as MapCameraRestore
+      if (isValidMapCamera(s)) return s
+    }
+  } catch {
+    return null
+  }
+  return null
+}
+
+function clearStoredMapCamera() {
+  mapCameraRestore.value = null
+  try {
+    sessionStorage.removeItem(MAP_VIEW_STORAGE_KEY)
+  } catch {
+    /* ignore */
+  }
+}
+
+/** 從 /photos/:id 返回地圖時才恢復上次視角（其餘含 Navbar 視為新進入並定位） */
+function isRestoreMapViewEntry(fromPath: string | null | undefined): boolean {
+  if (fromPath == null || fromPath === "") return false
+  return /^\/photos\/[^/]+\/?$/.test(fromPath)
+}
+
+const route = useRoute()
+
+/** 與 `layouts/default.vue` 共用：是否強制顯示 Header 返回鈕 */
+const layoutHeaderBackOverride = useState<boolean | null>(
+  "layout-header-back-override",
+  () => null,
+)
+
+const DEFAULT_MAP_CENTER: [number, number] = [121.5, 24.25]
+const DEFAULT_MAP_ZOOM = 6.5
+const GEOCODE_FLY_ZOOM = 16
+/** 從 /map?lat=&lng=、定位按鈕、初始定位成功時的目標 zoom */
+const QUERY_PHOTO_FLY_ZOOM = 17
+
+function parseMapQueryLatLng(): { lat: number; lng: number } | null {
+  const lat = Number(route.query.lat)
+  const lng = Number(route.query.lng)
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null
+  return { lat, lng }
+}
+
+const hasQueryLatLng = computed(() => parseMapQueryLatLng() != null)
+
+watch(
+  hasQueryLatLng,
+  (val) => {
+    /** layout 的 `watch(route.fullPath)` 會先把 override 清成 null，延到下一個 macrotask 再寫入 */
+    setTimeout(() => {
+      layoutHeaderBackOverride.value = val
+    }, 0)
+  },
+  { immediate: true },
+)
 
 /** 僅地圖頁鎖住 body 捲動 */
 onMounted(() => {
@@ -219,6 +385,8 @@ const supabase = useSupabaseClient()
 
 const mapContainerEl = ref<HTMLElement | null>(null)
 const loading = ref(true)
+const locateError = ref("")
+let locateErrorClearTimer: ReturnType<typeof setTimeout> | null = null
 const fetchError = ref("")
 const photoPoints = ref<PhotoPoint[]>([])
 const selectedTripId = ref<string | null>(null)
@@ -251,10 +419,6 @@ const selectedTripDateLabel = computed(() => {
   if (!selectedTrip.value) return "未知"
   return `${formatDate(selectedTrip.value.startDate)} - ${formatDate(selectedTrip.value.endDate)}`
 })
-
-const DEFAULT_MAP_CENTER: [number, number] = [121.5, 24.25]
-const DEFAULT_MAP_ZOOM = 6.5
-const GEOCODE_FLY_ZOOM = 16
 
 type NominatimGeocodeResult = {
   id: string
@@ -410,7 +574,7 @@ function getInitialMapViewFromGeolocation(): Promise<{
       (pos) => {
         const { longitude, latitude } = pos.coords
         if (Number.isFinite(longitude) && Number.isFinite(latitude)) {
-          resolve({ center: [longitude, latitude], zoom: 12 })
+          resolve({ center: [longitude, latitude], zoom: QUERY_PHOTO_FLY_ZOOM })
         } else {
           resolve({ center: DEFAULT_MAP_CENTER, zoom: DEFAULT_MAP_ZOOM })
         }
@@ -423,6 +587,107 @@ function getInitialMapViewFromGeolocation(): Promise<{
   })
 }
 
+async function resolveMapInitialView(): Promise<{
+  center: [number, number]
+  zoom: number
+}> {
+  const queryCenter = parseMapQueryLatLng()
+  if (queryCenter) {
+    clearStoredMapCamera()
+    return {
+      center: [queryCenter.lng, queryCenter.lat],
+      zoom: QUERY_PHOTO_FLY_ZOOM,
+    }
+  }
+
+  const from = mapEnterFrom.value
+
+  if (isRestoreMapViewEntry(from)) {
+    const restored = pickMapCameraRestore()
+    if (restored) {
+      return {
+        center: [restored.lng, restored.lat],
+        zoom: restored.zoom,
+      }
+    }
+    return getInitialMapViewFromGeolocation()
+  }
+
+  if (from == null || from === "") {
+    const restored = pickMapCameraRestore()
+    if (restored) {
+      return {
+        center: [restored.lng, restored.lat],
+        zoom: restored.zoom,
+      }
+    }
+    clearStoredMapCamera()
+    return getInitialMapViewFromGeolocation()
+  }
+
+  clearStoredMapCamera()
+  return getInitialMapViewFromGeolocation()
+}
+
+function showLocateError(message: string) {
+  locateError.value = message
+  if (locateErrorClearTimer) clearTimeout(locateErrorClearTimer)
+  locateErrorClearTimer = setTimeout(() => {
+    locateError.value = ""
+    locateErrorClearTimer = null
+  }, 4000)
+}
+
+function onLocateMeClick() {
+  if (!map) {
+    showLocateError("地圖尚未載入")
+    return
+  }
+  if (typeof navigator === "undefined" || !navigator.geolocation) {
+    showLocateError("此環境不支援定位")
+    return
+  }
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      if (!map) return
+      const { longitude, latitude } = pos.coords
+      if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) {
+        showLocateError("無法取得有效座標")
+        return
+      }
+      locateError.value = ""
+      map.flyTo({
+        center: [longitude, latitude],
+        zoom: QUERY_PHOTO_FLY_ZOOM,
+        essential: true,
+      })
+    },
+    () => {
+      showLocateError("無法取得定位，請確認已允許瀏覽器權限")
+    },
+    { enableHighAccuracy: false, timeout: 12_000, maximumAge: 120_000 },
+  )
+}
+
+/**
+ * Navbar 從 /map?lat&lng 回到純 /map（無 query）時，同頁組件常不重掛載，需清除備援並飛回定位。
+ */
+watch(
+  () => [route.path, route.query.lat, route.query.lng] as const,
+  async () => {
+    if (route.path !== "/map") return
+    if (!map) return
+    if (parseMapQueryLatLng()) return
+    clearStoredMapCamera()
+    const v = await getInitialMapViewFromGeolocation()
+    map.flyTo({
+      center: v.center,
+      zoom: v.zoom,
+      essential: true,
+    })
+  },
+)
+
 async function waitForMapLibreGl(timeoutMs = 15_000): Promise<MapLibreGlobal> {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
@@ -433,53 +698,94 @@ async function waitForMapLibreGl(timeoutMs = 15_000): Promise<MapLibreGlobal> {
   throw new Error("MapLibre GL 未能載入，請檢查網路或 CDN。")
 }
 
-function buildPopupContent(
+type AggregatedMapPhoto = {
+  lng: number
+  lat: number
+  imageUrl: string
+  photoId: string
+  count: number
+}
+
+function aggregatePhotoPointsByLocation(points: PhotoPoint[]): AggregatedMapPhoto[] {
+  const groups = new Map<
+    string,
+    { lng: number; lat: number; imageUrl: string; photoId: string; count: number }
+  >()
+  for (const p of points) {
+    const key = `${p.lat.toFixed(6)},${p.lng.toFixed(6)}`
+    const g = groups.get(key)
+    if (!g) {
+      groups.set(key, {
+        lng: p.lng,
+        lat: p.lat,
+        imageUrl: p.imageUrl,
+        photoId: p.id,
+        count: 1,
+      })
+    } else {
+      g.count++
+    }
+  }
+  return [...groups.values()]
+}
+
+function createMapPhotoMarkerElement(
   imageUrl: string,
-  tripName: string,
-  tripId: string,
-  onViewTrip: (id: string) => void,
-  coords: { lat: number; lng: number } | null
-) {
-  const root = document.createElement("div")
-  root.className = "map-page__popup-inner"
+  photoId: string,
+  count: number,
+): HTMLElement {
+  const el = document.createElement("div")
+  const safeUrl = imageUrl.replace(/\\/g, "\\\\").replace(/"/g, '\\"')
+  el.style.width = "60px"
+  el.style.height = "60px"
+  el.style.backgroundImage = `url("${safeUrl}")`
+  el.style.backgroundSize = "cover"
+  el.style.backgroundPosition = "center"
+  el.style.borderRadius = "8px"
+  el.style.border = "2px solid white"
+  el.style.cursor = "pointer"
+  el.style.boxShadow = "0 2px 4px rgba(0,0,0,0.3)"
+  el.setAttribute(
+    "role",
+    "button",
+  )
+  el.setAttribute(
+    "tabindex",
+    "0",
+  )
+  el.setAttribute(
+    "aria-label",
+    count > 1 ? `此位置有 ${count} 張照片，開啟第一張` : "開啟照片",
+  )
 
-  const img = document.createElement("img")
-  img.className = "map-page__popup-img"
-  img.src = imageUrl
-  img.alt = ""
-  img.loading = "lazy"
-  img.decoding = "async"
+  el.addEventListener("click", (e) => {
+    e.stopPropagation()
+    void navigateTo(`/photos/${photoId}`)
+  })
 
-  const caption = document.createElement("p")
-  caption.className = "map-page__popup-trip"
-  caption.textContent = tripName
-
-  root.append(img, caption)
-
-  const hasCoords =
-    coords !== null &&
-    Number.isFinite(coords.lat) &&
-    Number.isFinite(coords.lng)
-  if (hasCoords) {
-    const { lat, lng } = coords
-    const mapsAction = document.createElement("button")
-    mapsAction.type = "button"
-    mapsAction.className = "map-page__popup-maps"
-    mapsAction.textContent = "Google Maps"
-    mapsAction.addEventListener("click", () => {
-      window.open(`https://www.google.com/maps?q=${lat},${lng}`, "_blank")
-    })
-    root.appendChild(mapsAction)
+  if (count > 1) {
+    el.style.position = "relative"
+    const badge = document.createElement("div")
+    badge.textContent = String(count)
+    badge.style.position = "absolute"
+    badge.style.top = "-4px"
+    badge.style.right = "-4px"
+    badge.style.minWidth = "1.1rem"
+    badge.style.padding = "2px 5px"
+    badge.style.fontSize = "10px"
+    badge.style.fontWeight = "700"
+    badge.style.lineHeight = "1.2"
+    badge.style.color = "#fff"
+    badge.style.textAlign = "center"
+    badge.style.background = "#2563eb"
+    badge.style.border = "2px solid #fff"
+    badge.style.borderRadius = "999px"
+    badge.style.boxShadow = "0 1px 4px rgba(15,23,42,0.25)"
+    badge.style.pointerEvents = "none"
+    el.appendChild(badge)
   }
 
-  const action = document.createElement("button")
-  action.type = "button"
-  action.className = "map-page__popup-action"
-  action.textContent = "查看旅程"
-  action.addEventListener("click", () => onViewTrip(tripId))
-
-  root.appendChild(action)
-  return root
+  return el
 }
 
 function formatDate(value: string) {
@@ -662,7 +968,7 @@ onMounted(async () => {
     return
   }
 
-  const initialView = await getInitialMapViewFromGeolocation()
+  const initialView = await resolveMapInitialView()
 
   map = new maplibregl.Map({
     container: mapContainerEl.value,
@@ -670,7 +976,20 @@ onMounted(async () => {
     center: initialView.center,
     zoom: initialView.zoom,
     attributionControl: false,
+    touchPitch: true,
+    touchZoomRotate: { around: "center" },
   })
+
+  const mapUi = map as unknown as {
+    scrollZoom: {
+      setWheelZoomRate: (r: number) => void
+      setZoomRate: (r: number) => void
+    }
+    touchZoomRotate: { enable: (o?: { around?: string }) => void }
+  }
+  mapUi.scrollZoom.setWheelZoomRate(1 / 150)
+  mapUi.scrollZoom.setZoomRate(1 / 35)
+  mapUi.touchZoomRotate.enable({ around: "center" })
 
   map.addControl(new maplibregl.NavigationControl(), "top-right")
 
@@ -678,23 +997,18 @@ onMounted(async () => {
     if (!map) return
     loading.value = false
 
-    const pts = photoPoints.value
-    for (const p of pts) {
-      const popup = new maplibregl.Popup({
-        offset: 18,
-        maxWidth: "240px",
-        closeButton: true,
-        closeOnClick: true,
-      }).setDOMContent(
-        buildPopupContent(p.imageUrl, p.tripName, p.tripId, openTripModal, {
-          lat: p.lat,
-          lng: p.lng,
-        })
+    const aggregated = aggregatePhotoPointsByLocation(photoPoints.value)
+    for (const p of aggregated) {
+      const el = createMapPhotoMarkerElement(
+        p.imageUrl,
+        p.photoId,
+        p.count,
       )
-
-      const marker = new maplibregl.Marker({ color: "#2563eb" })
+      const marker = new maplibregl.Marker({
+        element: el,
+        anchor: "bottom",
+      })
         .setLngLat([p.lng, p.lat])
-        .setPopup(popup)
         .addTo(map!)
 
       markers.push(marker)
@@ -702,8 +1016,17 @@ onMounted(async () => {
   })
 })
 
+onBeforeRouteLeave(() => {
+  persistMapCameraState()
+})
+
 onBeforeUnmount(() => {
+  persistMapCameraState()
   document.body.style.overflow = ""
+  if (locateErrorClearTimer) {
+    clearTimeout(locateErrorClearTimer)
+    locateErrorClearTimer = null
+  }
   if (geocodeDebounceTimer) clearTimeout(geocodeDebounceTimer)
   if (geocodeBlurTimer) clearTimeout(geocodeBlurTimer)
   removeGeocodeSearchMarker()
@@ -724,7 +1047,8 @@ onBeforeUnmount(() => {
   /* 約等於 100dvh 減去 default layout 頂部導覽列（還原全域鎖捲動後避免與 header 疊加高度） */
   height: calc(100dvh - 3.25rem);
   max-height: calc(100dvh - 3.25rem);
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: visible;
   background: var(--color-bg);
 }
 
@@ -745,9 +1069,67 @@ onBeforeUnmount(() => {
 
 .map-page__body {
   position: relative;
+  z-index: 0;
   flex: 1;
   min-height: 0;
   width: 100%;
+  overflow: visible;
+}
+
+.map-page__locate-stack {
+  position: fixed;
+  bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+  right: calc(10px + env(safe-area-inset-right, 0px));
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.35rem;
+  max-width: min(220px, 72vw);
+  pointer-events: none;
+
+  > * {
+    pointer-events: auto;
+  }
+}
+
+.map-page__locate-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 29px;
+  height: 29px;
+  margin: 0;
+  padding: 0;
+  color: #333;
+  background: #fff;
+  border: none;
+  border-radius: 4px;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.1);
+  cursor: pointer;
+  transition: background 0.15s ease;
+
+  &:hover {
+    background: #f3f4f6;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+}
+
+.map-page__locate-hint {
+  margin: 0;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: var(--color-danger);
+  text-align: right;
+  background: rgba(255, 255, 255, 0.96);
+  border-radius: 0.35rem;
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.12);
 }
 
 .map-page__overlay {
@@ -784,6 +1166,7 @@ onBeforeUnmount(() => {
 .map-page__canvas {
   position: absolute;
   inset: 0;
+  z-index: 0;
   width: 100%;
   height: 100%;
 }
@@ -1078,54 +1461,5 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 
-/* Popup 內容掛到 body，需非 scoped 區塊 */
-</style>
-
-<style lang="scss">
-.maplibregl-popup {
-  z-index: 10;
-}
-
-.map-page__popup-inner {
-  padding: 0.25rem;
-}
-
-.map-page__popup-img {
-  display: block;
-  width: 200px;
-  max-width: 100%;
-  height: auto;
-  border-radius: 0.375rem;
-  vertical-align: middle;
-}
-
-.map-page__popup-trip {
-  margin: 0.5rem 0 0;
-  font-size: 0.8125rem;
-  font-weight: 600;
-  color: var(--color-text);
-  line-height: 1.35;
-}
-
-.map-page__popup-maps {
-  margin-top: 0.5rem;
-  background: transparent;
-  border: 1px solid #2563eb;
-  color: #2563eb;
-  border-radius: 0.45rem;
-  padding: 0.38rem 0.6rem;
-  font-size: 0.75rem;
-  cursor: pointer;
-}
-
-.map-page__popup-action {
-  margin-top: 0.5rem;
-  border: none;
-  border-radius: 0.45rem;
-  background: #2563eb;
-  color: #fff;
-  padding: 0.38rem 0.6rem;
-  font-size: 0.75rem;
-  cursor: pointer;
-}
+/* 照片縮圖標記改以 JS 內聯樣式建立單一 div（見 createMapPhotoMarkerElement） */
 </style>

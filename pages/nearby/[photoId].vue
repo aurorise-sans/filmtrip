@@ -26,14 +26,33 @@
           <p class="nearby-page__address">
             {{ addressLine ?? "無地址資訊" }}
           </p>
-          <a
-            class="nearby-page__gmaps"
-            :href="googleMapsUrl(centerPhoto.latitude!, centerPhoto.longitude!)"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            在 Google Maps 開啟
-          </a>
+          <div class="nearby-page__actions" role="group" aria-label="照片位置操作">
+            <div class="nearby-page__actions-start">
+              <NuxtLink
+                class="nearby-page__action-btn nearby-page__action-btn--map"
+                :to="mapPageWithCoordsTo"
+              >
+                在地圖上查看
+              </NuxtLink>
+              <a
+                class="nearby-page__action-btn nearby-page__action-btn--gmaps"
+                :href="googleMapsUrl(centerPhoto.latitude!, centerPhoto.longitude!)"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                開啟 Google Maps
+              </a>
+            </div>
+            <button
+              type="button"
+              class="nearby-page__bookmark-icon"
+              disabled
+              aria-disabled="true"
+              aria-label="收藏（即將開放）"
+            >
+              <Bookmark :size="22" aria-hidden="true" />
+            </button>
+          </div>
         </div>
         <ul class="nearby-page__grid" aria-label="附近照片">
           <li
@@ -74,6 +93,7 @@
 
 <script setup lang="ts">
 import { nextTick } from "vue"
+import { Bookmark } from "lucide-vue-next"
 import { OPENFREEMAP_LIBERTY_STYLE, waitForMapLibreGl } from "~/utils/maplibreClient"
 import { haversineDistanceMeters } from "~/utils/haversine"
 
@@ -178,6 +198,27 @@ function googleMapsUrl(lat: number, lng: number) {
   return `https://www.google.com/maps/search/?api=1&query=${q}`
 }
 
+/** 帶經緯度讓 /map 初始飛到該點（query 為 lat / lng） */
+const mapPageWithCoordsTo = computed(() => {
+  const p = centerPhoto.value
+  if (
+    !p ||
+    p.latitude == null ||
+    p.longitude == null ||
+    Number.isNaN(p.latitude) ||
+    Number.isNaN(p.longitude)
+  ) {
+    return "/map"
+  }
+  return {
+    path: "/map",
+    query: {
+      lat: String(p.latitude),
+      lng: String(p.longitude),
+    },
+  }
+})
+
 const nearbyPhotos = computed(() => {
   const c = centerPhoto.value
   if (!c || c.latitude == null || c.longitude == null) return []
@@ -200,16 +241,41 @@ const nearbyPhotos = computed(() => {
   return out
 })
 
-/** 網格：觸發照片置頂，其餘為 500 公尺內其他公開照片 */
-const nearbyThumbs = computed((): PhotoWithTrip[] => {
-  const c = centerPhoto.value
-  if (!c || c.latitude == null || c.longitude == null) return []
-  return [c, ...nearbyPhotos.value]
-})
+/** 網格：僅 500 公尺內其他公開照片（不含當前照片） */
+const nearbyThumbs = computed((): PhotoWithTrip[] => nearbyPhotos.value)
 
 const mapContainer = ref<HTMLElement | null>(null)
 let map: MapLibreMap | null = null
 const markers: MapLibreMarker[] = []
+
+function createCenterPhotoMarkerElement(
+  imageUrl: string,
+  targetPhotoId: string,
+): HTMLElement {
+  const root = document.createElement("div")
+  root.className = "nearby-page__map-marker-anchor"
+
+  const btn = document.createElement("button")
+  btn.type = "button"
+  btn.className = "nearby-page__map-marker"
+  btn.setAttribute("aria-label", "查看此照片")
+
+  const img = document.createElement("img")
+  img.className = "nearby-page__map-marker-img"
+  img.src = imageUrl
+  img.alt = ""
+  img.loading = "lazy"
+  img.decoding = "async"
+  btn.appendChild(img)
+
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation()
+    void navigateTo(`/photos/${targetPhotoId}`)
+  })
+
+  root.appendChild(btn)
+  return root
+}
 
 function circlePolygon(
   lng: number,
@@ -246,8 +312,8 @@ watch(
     [
       hasCenterCoords.value,
       centerPhoto.value?.id,
+      centerPhoto.value?.image_url,
       mapContainer.value,
-      nearbyPhotos.value.length,
     ] as const,
   async () => {
     if (!import.meta.client) return
@@ -284,26 +350,17 @@ watch(
 
     map.addControl(new maplibregl.NavigationControl(), "top-right")
 
-    const mCenter = new maplibregl.Marker({ color: "#dc2626" })
+    const markerEl = createCenterPhotoMarkerElement(c.image_url, c.id)
+    const mCenter = new maplibregl.Marker({
+      element: markerEl,
+      anchor: "bottom",
+    })
       .setLngLat([clng, clat])
       .addTo(map)
     markers.push(mCenter)
 
-    for (const p of nearbyPhotos.value) {
-      if (p.latitude == null || p.longitude == null) continue
-      const mk = new maplibregl.Marker({ color: "#2563eb" })
-        .setLngLat([p.longitude, p.latitude])
-        .addTo(map)
-      markers.push(mk)
-    }
-
     const bounds = new maplibregl.LngLatBounds()
     bounds.extend([clng, clat])
-    for (const p of nearbyPhotos.value) {
-      if (p.latitude != null && p.longitude != null) {
-        bounds.extend([p.longitude, p.latitude])
-      }
-    }
     const ring = circlePolygon(clng, clat, RADIUS_M).coordinates[0]!
     for (const coord of ring) {
       bounds.extend(coord as [number, number])
@@ -412,34 +469,95 @@ watch(
   color: var(--color-text);
 }
 
-.nearby-page__gmaps {
+.nearby-page__actions {
   display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.nearby-page__actions-start {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.nearby-page__action-btn {
+  display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 0.35rem;
   box-sizing: border-box;
-  width: 100%;
+  min-width: 0;
   margin: 0;
-  padding: 0.45rem 0.85rem;
-  font-size: 0.875rem;
+  padding: 0.45rem 0.65rem;
+  font-size: 0.8125rem;
   font-weight: 500;
-  color: var(--color-accent);
+  line-height: 1.25;
+  text-align: center;
   text-decoration: none;
-  border: 1px solid rgba(37, 99, 235, 0.35);
   border-radius: 0.5rem;
-  background: rgba(37, 99, 235, 0.06);
+  cursor: pointer;
   transition:
     background 0.15s ease,
-    border-color 0.15s ease;
+    border-color 0.15s ease,
+    opacity 0.15s ease;
 
-  &:hover {
-    background: rgba(37, 99, 235, 0.1);
-    border-color: var(--color-accent);
+  &--map {
+    color: var(--color-text);
+    border: 1px solid var(--color-border);
+    background: var(--color-surface);
+
+    &:hover {
+      background: rgba(15, 23, 42, 0.04);
+      border-color: var(--color-border-strong);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--color-accent);
+      outline-offset: 2px;
+    }
   }
 
-  &:focus-visible {
-    outline: 2px solid var(--color-accent);
-    outline-offset: 2px;
+  &--gmaps {
+    color: var(--color-accent);
+    border: 1px solid rgba(37, 99, 235, 0.35);
+    background: rgba(37, 99, 235, 0.06);
+
+    &:hover {
+      background: rgba(37, 99, 235, 0.1);
+      border-color: var(--color-accent);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--color-accent);
+      outline-offset: 2px;
+    }
   }
+}
+
+.nearby-page__bookmark-icon {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  margin: 0;
+  padding: 0;
+  color: var(--color-text-muted);
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  background: var(--color-surface);
+  opacity: 0.72;
+  cursor: not-allowed;
 }
 
 .nearby-page__map {
@@ -494,5 +612,49 @@ watch(
   height: 100%;
   object-fit: cover;
   object-position: center;
+}
+</style>
+
+<!-- 地圖標記為 MapLibre 掛載的 DOM，需非 scoped；外層固定尺寸供 MapLibre 計算錨點 -->
+<style lang="scss">
+.nearby-page__map-marker-anchor {
+  position: relative;
+  width: 60px;
+  height: 60px;
+  flex-shrink: 0;
+}
+
+.nearby-page__map-marker {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 60px;
+  height: 60px;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  border: none;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  cursor: pointer;
+  background: rgba(15, 23, 42, 0.08);
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.28);
+}
+
+.nearby-page__map-marker-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  border-radius: 0.5rem;
+  border: 3px solid #fff;
+  object-fit: cover;
+  object-position: center;
+  vertical-align: middle;
+}
+
+.nearby-page__map-marker:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
 }
 </style>

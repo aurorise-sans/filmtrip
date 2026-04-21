@@ -46,14 +46,30 @@
             <button
               type="button"
               class="nearby-page__bookmark-icon"
-              disabled
-              aria-disabled="true"
-              aria-label="收藏（即將開放）"
+              :class="{
+                'nearby-page__bookmark-icon--bookmarked': isCenterPhotoBookmarked,
+              }"
+              aria-label="收藏"
+              :aria-pressed="isCenterPhotoBookmarked"
+              @click="onNearbyBookmarkClick"
             >
-              <Bookmark :size="22" aria-hidden="true" />
+              <Bookmark
+                :size="22"
+                aria-hidden="true"
+                :fill="isCenterPhotoBookmarked ? 'currentColor' : 'none'"
+              />
             </button>
           </div>
         </div>
+        <CollectionSheet
+          v-if="bookmarkSheetPhotoId"
+          :photo-id="bookmarkSheetPhotoId"
+          :open="bookmarkSheetOpen"
+          :feed-collections="userCollections"
+          @close="bookmarkSheetOpen = false"
+          @closed="onBookmarkSheetClosed"
+          @saved="onBookmarkSaved"
+        />
         <ul class="nearby-page__grid" aria-label="附近照片">
           <li
             v-for="p in nearbyThumbs"
@@ -92,7 +108,7 @@
 </template>
 
 <script setup lang="ts">
-import { nextTick } from "vue"
+import { nextTick, watch } from "vue"
 import { Bookmark } from "lucide-vue-next"
 import { OPENFREEMAP_LIBERTY_STYLE, waitForMapLibreGl } from "~/utils/maplibreClient"
 import { haversineDistanceMeters } from "~/utils/haversine"
@@ -119,6 +135,97 @@ type PhotoWithTrip = {
 }
 
 const supabase = useSupabaseClient()
+const user = useSupabaseUser()
+
+const userCollections = ref<
+  { id: string; name: string; created_at: string }[]
+>([])
+/** 目前登入者是否已將此照片加入任一收藏夾 */
+const isCenterPhotoBookmarked = ref(false)
+
+const bookmarkSheetOpen = ref(false)
+const bookmarkSheetPhotoId = ref<string | null>(null)
+
+async function fetchUserCollections() {
+  const {
+    data: { user: u },
+  } = await supabase.auth.getUser()
+  if (!u) {
+    userCollections.value = []
+    return
+  }
+  const { data: rows, error } = await supabase
+    .from("collections")
+    .select("id, name, created_at")
+    .order("created_at", { ascending: true })
+  if (error) throw error
+  userCollections.value = (rows ?? []) as {
+    id: string
+    name: string
+    created_at: string
+  }[]
+}
+
+/**
+ * 查詢 collection_items（photo_id = 當前照片）；RLS 下僅會看到本人收藏夾內的列。
+ * 有任何一筆則顯示實心書籤。
+ */
+async function fetchCenterPhotoBookmarkMeta() {
+  const id = photoId.value
+  if (!id) {
+    isCenterPhotoBookmarked.value = false
+    return
+  }
+
+  const {
+    data: { user: u },
+  } = await supabase.auth.getUser()
+  if (!u) {
+    isCenterPhotoBookmarked.value = false
+    return
+  }
+
+  const { data: itemRows, error } = await supabase
+    .from("collection_items")
+    .select("photo_id")
+    .eq("photo_id", id)
+    .limit(1)
+
+  if (error) throw error
+  isCenterPhotoBookmarked.value = (itemRows?.length ?? 0) > 0
+}
+
+async function refreshNearbyCollectionContext() {
+  await fetchUserCollections()
+  await fetchCenterPhotoBookmarkMeta()
+}
+
+async function onNearbyBookmarkClick() {
+  if (!user.value) {
+    await navigateTo("/login")
+    return
+  }
+  bookmarkSheetPhotoId.value = photoId.value
+  bookmarkSheetOpen.value = true
+}
+
+function onBookmarkSheetClosed() {
+  bookmarkSheetPhotoId.value = null
+}
+
+async function onBookmarkSaved(payload: {
+  photoId: string
+  isBookmarked: boolean
+}) {
+  if (payload.photoId === photoId.value) {
+    isCenterPhotoBookmarked.value = payload.isBookmarked
+  }
+  try {
+    await refreshNearbyCollectionContext()
+  } catch {
+    /* ignore */
+  }
+}
 
 const {
   data: bundle,
@@ -170,6 +277,25 @@ const centerPhoto = computed(() => bundle.value?.center ?? null)
 const pool = computed(() => bundle.value?.pool ?? [])
 
 const loadError = computed(() => loadErr.value?.message ?? "")
+
+watch(
+  () =>
+    [user.value?.id ?? "", photoId.value, centerPhoto.value?.id ?? ""] as const,
+  async () => {
+    if (!import.meta.client) return
+    if (!photoId.value || !centerPhoto.value) {
+      isCenterPhotoBookmarked.value = false
+      userCollections.value = []
+      return
+    }
+    try {
+      await refreshNearbyCollectionContext()
+    } catch {
+      /* ignore */
+    }
+  },
+  { immediate: true },
+)
 
 function photoAddressLine(photo: {
   place_name?: string | null
@@ -556,8 +682,32 @@ watch(
   border: 1px solid var(--color-border);
   border-radius: 0.5rem;
   background: var(--color-surface);
-  opacity: 0.72;
-  cursor: not-allowed;
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease,
+    border-color 0.15s ease;
+
+  &:hover {
+    color: var(--color-accent);
+    background: rgba(37, 99, 235, 0.06);
+    border-color: rgba(37, 99, 235, 0.35);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+
+  &--bookmarked {
+    color: var(--color-accent);
+    border-color: rgba(37, 99, 235, 0.35);
+
+    &:hover {
+      color: var(--color-accent-hover, var(--color-accent));
+      background: rgba(15, 23, 42, 0.06);
+    }
+  }
 }
 
 .nearby-page__map {

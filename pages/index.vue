@@ -441,12 +441,15 @@ async function refreshFeedCollectionContext(photoIds: string[]) {
 }
 
 async function onFeedLikeClick(photoId: string) {
-  if (!user.value) {
+  const {
+    data: { user: authUser },
+  } = await supabase.auth.getUser()
+  if (!authUser) {
     await navigateTo("/login")
     return
   }
 
-  const uid = user.value.id
+  const uid = authUser.id
   const prevLiked = !!likedByMeByPhotoId.value[photoId]
   const prevCount = likeCountByPhotoId.value[photoId] ?? 0
   const nextLiked = !prevLiked

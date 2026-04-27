@@ -77,7 +77,7 @@
                   @click="onFeedLikeClick(row.photo.id)"
                 >
                   <Heart
-                    :size="20"
+                    :size="24"
                     aria-hidden="true"
                     :fill="
                       isPhotoLikedByMe(row.photo.id) ? 'currentColor' : 'none'
@@ -91,7 +91,7 @@
                   aria-label="附近照片地圖"
                   @click="onFeedMapClick(row.photo.id)"
                 >
-                  <MapIcon :size="20" aria-hidden="true" />
+                  <MapIcon :size="24" aria-hidden="true" />
                 </button>
                 <span
                   v-else
@@ -99,7 +99,7 @@
                   aria-disabled="true"
                   aria-label="此照片無座標，無法顯示地圖"
                 >
-                  <MapIcon :size="20" aria-hidden="true" />
+                  <MapIcon :size="24" aria-hidden="true" />
                 </span>
                 <button
                   type="button"
@@ -114,7 +114,7 @@
                   @click="onFeedBookmarkClick(row.photo.id)"
                 >
                   <Bookmark
-                    :size="20"
+                    :size="24"
                     aria-hidden="true"
                     :fill="
                       isPhotoBookmarkedByMe(row.photo.id)
@@ -136,13 +136,13 @@
                     class="feed-photo-card__trip-cover-img"
                     :src="row.trip.coverImageUrl"
                     alt=""
-                    width="20"
-                    height="20"
+                    width="24"
+                    height="24"
                     loading="lazy"
                     decoding="async"
                   >
                 </span>
-                <span class="feed-photo-card__trip-name text-body-small-medium">
+                <span class="feed-photo-card__trip-name text-body-medium-medium">
                   {{ row.trip.name }}
                 </span>
               </NuxtLink>
@@ -1116,7 +1116,7 @@ onMounted(async () => {
 }
 
 /**
- * 依 Figma 設計：icon 容器精確 20×20，無外框 padding。
+ * 依 Figma 設計：icon 容器精確 24×24，無外框 padding。
  * gap 16px 是「icon 邊到下一個 icon 邊」的視覺距離。
  */
 .feed-photo-card__icon-btn {
@@ -1124,8 +1124,8 @@ onMounted(async () => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   padding: 0;
   margin: 0;
   font: inherit;
@@ -1188,8 +1188,8 @@ onMounted(async () => {
 
 .feed-photo-card__trip-cover {
   flex-shrink: 0;
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   border-radius: 4px;
   overflow: hidden;
   background: var(--color-gray-100);

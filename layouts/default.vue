@@ -68,11 +68,12 @@
         <span class="layout-default__appbar-sr">地圖</span>
       </NuxtLink>
       <NuxtLink
-        class="layout-default__appbar-btn"
-        :class="{ 'layout-default__appbar-btn--active': plusActive }"
+        class="layout-default__appbar-btn layout-default__appbar-btn--plus"
         to="/trips/new"
       >
-        <Plus :size="24" aria-hidden="true" />
+        <span class="layout-default__appbar-plus">
+          <Plus :size="24" aria-hidden="true" />
+        </span>
         <span class="layout-default__appbar-sr">建立旅程</span>
       </NuxtLink>
       <NuxtLink
@@ -93,8 +94,8 @@
           class="layout-default__appbar-avatar"
           :src="navAvatarDisplayUrl"
           alt=""
-          width="32"
-          height="32"
+          width="24"
+          height="24"
         />
         <User v-else :size="24" aria-hidden="true" />
         <span class="layout-default__appbar-sr">個人</span>
@@ -329,57 +330,93 @@ watch(
   }
 
   &__main--with-appbar {
-    /* Navbar：上內距 + 按鈕列 + 下內距（含底部安全區） */
-    padding-bottom: calc(
-      0.5rem + 44px + 0.5rem + env(safe-area-inset-bottom, 0px)
-    );
+    /* Navbar 高度 48px = 8(top) + 32(plus 按鈕) + 8(bottom)；含底部安全區 */
+    padding-bottom: calc(48px + env(safe-area-inset-bottom, 0px));
   }
 
+  /**
+   * Navbar：依 Figma 1:180 規格
+   * - 高度 48px（不含底部 safe-area）
+   * - padding 8px 32px
+   * - justify-between 等距分布 5 個 child
+   * - 桌面寬螢幕加 max-width 32rem 置中
+   */
   &__appbar {
     position: fixed;
     bottom: 0;
     left: 0;
     right: 0;
     z-index: 50;
-    display: flex;
-    align-items: stretch;
-    gap: 0;
-    padding: 0.5rem 0.35rem calc(0.5rem + env(safe-area-inset-bottom, 0px));
-    background: #fff;
-    border-radius: 0;
-    border-top: 1px solid var(--color-border);
     box-sizing: border-box;
+    width: 100%;
+    max-width: 32rem;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 32px calc(8px + env(safe-area-inset-bottom, 0px));
+    background: var(--color-white);
+    border-top: 1px solid var(--color-gray-100);
   }
 
+  /**
+   * 一般按鈕（Home / Map / Bookmark / Profile）：嚴格 24×24 視覺尺寸。
+   * 顏色：未選取 gray-500；選取 gray-900。
+   */
   &__appbar-btn {
-    flex: 1;
+    box-sizing: border-box;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-height: 44px;
-    padding: 0.35rem 0.5rem;
-    color: var(--color-text-muted);
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    color: var(--color-gray-500);
     text-decoration: none;
-    border-radius: 12px;
     transition: color 0.15s ease;
 
     &:focus-visible {
-      outline: 2px solid var(--color-accent);
+      outline: 2px solid var(--color-gray-900);
       outline-offset: 2px;
+      border-radius: 2px;
     }
 
     &--active {
-      color: var(--color-accent);
+      color: var(--color-gray-900);
     }
 
     &--profile {
       min-width: 0;
+      overflow: hidden;
+      border-radius: 50%;
     }
   }
 
-  &__appbar-avatar {
+  /**
+   * Plus 按鈕：永遠黑底，不隨 active 切換樣式。
+   * 32×32 黑底圓角 8px、padding 4px、內含 24×24 白色 Plus icon。
+   */
+  &__appbar-btn--plus {
     width: 32px;
     height: 32px;
+  }
+
+  &__appbar-plus {
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 4px;
+    background: var(--color-gray-900);
+    color: var(--color-white);
+    border-radius: 8px;
+  }
+
+  &__appbar-avatar {
+    width: 24px;
+    height: 24px;
     border-radius: 50%;
     object-fit: cover;
     display: block;

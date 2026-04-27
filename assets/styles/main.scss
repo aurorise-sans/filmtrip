@@ -5,17 +5,8 @@
 }
 
 :root {
-  /* 字體（頁面與元件透過 var 使用） */
-  --font-sans:
-    system-ui,
-    -apple-system,
-    "Segoe UI",
-    Roboto,
-    "Helvetica Neue",
-    Arial,
-    sans-serif;
-
-  /* 色彩 */
+  /* Legacy color tokens — 與 design-tokens.scss 命名不同，仍被多處頁面/元件引用；
+     後續可逐步 migrate 至 design-tokens.scss 的 grayscale tokens 後再移除。 */
   --color-text: #1a1a1a;
   --color-text-muted: #5c5c5c;
   --color-bg: #fafafa;
@@ -48,8 +39,6 @@ html {
 
 body {
   margin: 0;
-  font-family: var(--font-sans);
   line-height: 1.5;
-  color: var(--color-text);
   background-color: var(--color-bg);
 }

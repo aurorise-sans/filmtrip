@@ -2,11 +2,27 @@
 export default defineNuxtConfig({
   compatibilityDate: "2025-04-01",
   devtools: { enabled: true },
-  css: ["~/assets/styles/main.scss"],
+  css: [
+    "~/assets/styles/main.scss",
+    "~/assets/styles/design-tokens.scss",
+  ],
 
   app: {
     head: {
       link: [
+        {
+          rel: "preconnect",
+          href: "https://fonts.googleapis.com",
+        },
+        {
+          rel: "preconnect",
+          href: "https://fonts.gstatic.com",
+          crossorigin: "",
+        },
+        {
+          rel: "stylesheet",
+          href: "https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@400;700&display=swap",
+        },
         {
           rel: "stylesheet",
           href: "https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css",

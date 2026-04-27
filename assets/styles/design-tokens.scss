@@ -1,0 +1,168 @@
+:root {
+  /* === Colors === */
+  /* Grayscale */
+  --color-white: #ffffff;
+  --color-gray-100: #eeeeee;
+  --color-gray-200: #cccccc;
+  --color-gray-500: #888888;
+  --color-gray-700: #555555;
+  --color-gray-800: #333333;
+  --color-gray-900: #111111;
+  --color-black: #000000;
+
+  /* Brand */
+  --color-green-500: #4caf50;
+  --color-red-500: #e04545;
+
+  /* === Typography === */
+  --font-serif: "Noto Serif TC", serif;
+  --font-sans: "Noto Sans TC", sans-serif;
+}
+
+/* === Typography Utility Classes === */
+
+/* Display (Noto Serif TC) */
+.text-display-large {
+  font-family: var(--font-serif);
+  font-size: 24px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+.text-display-large-bold {
+  font-family: var(--font-serif);
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+.text-display-small {
+  font-family: var(--font-serif);
+  font-size: 18px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+.text-display-small-bold {
+  font-family: var(--font-serif);
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+.text-display-xs {
+  font-family: var(--font-serif);
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+.text-display-xs-bold {
+  font-family: var(--font-serif);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+.text-display-2xs {
+  font-family: var(--font-serif);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+.text-display-2xs-bold {
+  font-family: var(--font-serif);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+/* Heading (Noto Sans TC) */
+.text-heading-medium {
+  font-family: var(--font-sans);
+  font-size: 20px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+.text-heading-medium-bold {
+  font-family: var(--font-sans);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+.text-heading-small {
+  font-family: var(--font-sans);
+  font-size: 18px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+.text-heading-small-bold {
+  font-family: var(--font-sans);
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+/* Body (Noto Sans TC) */
+.text-body-large {
+  font-family: var(--font-sans);
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+.text-body-large-bold {
+  font-family: var(--font-sans);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+.text-body-medium {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+.text-body-medium-medium {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+.text-body-medium-bold {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+.text-body-small {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+.text-body-small-medium {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+.text-body-small-bold {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+/* Label (Noto Sans TC) */
+.text-label-medium {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+.text-label-small {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+/* === Default body === */
+body {
+  font-family: var(--font-sans);
+  color: var(--color-gray-900);
+}

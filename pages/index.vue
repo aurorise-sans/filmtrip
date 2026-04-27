@@ -21,6 +21,34 @@
             class="feed-photo-card"
           >
             <NuxtLink
+              class="feed-photo-card__author-row"
+              :to="`/profile/${row.authorUserId}`"
+              :aria-label="`作者個人頁：${row.displayName}`"
+            >
+              <span class="feed-photo-card__avatar-wrap">
+                <img
+                  v-if="row.profile.avatar_url"
+                  class="feed-photo-card__avatar-img"
+                  :src="row.profile.avatar_url"
+                  alt=""
+                  width="24"
+                  height="24"
+                  loading="lazy"
+                  decoding="async"
+                >
+                <User
+                  v-else
+                  class="feed-photo-card__avatar-fallback"
+                  :size="16"
+                  aria-hidden="true"
+                />
+              </span>
+              <span class="feed-photo-card__author-name text-display-2xs-bold">
+                {{ row.displayName }}
+              </span>
+            </NuxtLink>
+
+            <NuxtLink
               :class="layout.linkClass"
               :to="`/trips/${row.trip.id}`"
             >
@@ -35,87 +63,87 @@
             </NuxtLink>
 
             <div class="feed-photo-card__toolbar">
-              <button
-                type="button"
-                class="feed-photo-card__icon-btn"
-                :class="{
-                  'feed-photo-card__icon-btn--liked': isPhotoLikedByMe(
-                    row.photo.id,
-                  ),
-                }"
-                aria-label="按讚"
-                :aria-pressed="isPhotoLikedByMe(row.photo.id)"
-                @click="onFeedLikeClick(row.photo.id)"
-              >
-                <Heart
-                  :size="22"
-                  aria-hidden="true"
-                  :fill="
-                    isPhotoLikedByMe(row.photo.id) ? 'currentColor' : 'none'
-                  "
-                />
-              </button>
-              <button
-                v-if="row.hasCoords"
-                type="button"
-                class="feed-photo-card__icon-btn"
-                aria-label="附近照片地圖"
-                @click="onFeedMapClick(row.photo.id)"
-              >
-                <MapIcon :size="22" aria-hidden="true" />
-              </button>
-              <span
-                v-else
-                class="feed-photo-card__icon-btn feed-photo-card__icon-btn--disabled"
-                aria-disabled="true"
-                aria-label="此照片無座標，無法顯示地圖"
-              >
-                <MapIcon :size="22" aria-hidden="true" />
-              </span>
-              <button
-                type="button"
-                class="feed-photo-card__icon-btn"
-                :class="{
-                  'feed-photo-card__icon-btn--bookmarked': isPhotoBookmarkedByMe(
-                    row.photo.id,
-                  ),
-                }"
-                aria-label="收藏"
-                :aria-pressed="isPhotoBookmarkedByMe(row.photo.id)"
-                @click="onFeedBookmarkClick(row.photo.id)"
-              >
-                <Bookmark
-                  :size="22"
-                  aria-hidden="true"
-                  :fill="
-                    isPhotoBookmarkedByMe(row.photo.id)
-                      ? 'currentColor'
-                      : 'none'
-                  "
-                />
-              </button>
+              <div class="feed-photo-card__actions">
+                <button
+                  type="button"
+                  class="feed-photo-card__icon-btn"
+                  :class="{
+                    'feed-photo-card__icon-btn--liked': isPhotoLikedByMe(
+                      row.photo.id,
+                    ),
+                  }"
+                  aria-label="按讚"
+                  :aria-pressed="isPhotoLikedByMe(row.photo.id)"
+                  @click="onFeedLikeClick(row.photo.id)"
+                >
+                  <Heart
+                    :size="20"
+                    aria-hidden="true"
+                    :fill="
+                      isPhotoLikedByMe(row.photo.id) ? 'currentColor' : 'none'
+                    "
+                  />
+                </button>
+                <button
+                  v-if="row.hasCoords"
+                  type="button"
+                  class="feed-photo-card__icon-btn"
+                  aria-label="附近照片地圖"
+                  @click="onFeedMapClick(row.photo.id)"
+                >
+                  <MapIcon :size="20" aria-hidden="true" />
+                </button>
+                <span
+                  v-else
+                  class="feed-photo-card__icon-btn feed-photo-card__icon-btn--disabled"
+                  aria-disabled="true"
+                  aria-label="此照片無座標，無法顯示地圖"
+                >
+                  <MapIcon :size="20" aria-hidden="true" />
+                </span>
+                <button
+                  type="button"
+                  class="feed-photo-card__icon-btn"
+                  :class="{
+                    'feed-photo-card__icon-btn--bookmarked': isPhotoBookmarkedByMe(
+                      row.photo.id,
+                    ),
+                  }"
+                  aria-label="收藏"
+                  :aria-pressed="isPhotoBookmarkedByMe(row.photo.id)"
+                  @click="onFeedBookmarkClick(row.photo.id)"
+                >
+                  <Bookmark
+                    :size="20"
+                    aria-hidden="true"
+                    :fill="
+                      isPhotoBookmarkedByMe(row.photo.id)
+                        ? 'currentColor'
+                        : 'none'
+                    "
+                  />
+                </button>
+              </div>
+
               <NuxtLink
-                class="feed-photo-card__icon-btn feed-photo-card__author-link"
-                :to="`/profile/${row.authorUserId}`"
-                aria-label="作者個人頁"
+                class="feed-photo-card__trip-link"
+                :to="`/trips/${row.trip.id}`"
+                :aria-label="`旅程：${row.trip.name}`"
               >
-                <span class="feed-photo-card__avatar-wrap">
+                <span class="feed-photo-card__trip-cover">
                   <img
-                    v-if="row.profile.avatar_url"
-                    class="feed-photo-card__avatar-img"
-                    :src="row.profile.avatar_url"
+                    v-if="row.trip.coverImageUrl"
+                    class="feed-photo-card__trip-cover-img"
+                    :src="row.trip.coverImageUrl"
                     alt=""
-                    width="32"
-                    height="32"
+                    width="20"
+                    height="20"
                     loading="lazy"
                     decoding="async"
                   >
-                  <User
-                    v-else
-                    class="feed-photo-card__avatar-fallback"
-                    :size="22"
-                    aria-hidden="true"
-                  />
+                </span>
+                <span class="feed-photo-card__trip-name text-body-small-medium">
+                  {{ row.trip.name }}
                 </span>
               </NuxtLink>
             </div>
@@ -191,7 +219,8 @@ type FeedItem = {
     PhotoRow,
     "id" | "image_url" | "latitude" | "longitude" | "place_name"
   >
-  trip: { id: string; name: string }
+  /** trip.coverImageUrl：該旅程內 sort_order 最小的照片（無則 null） */
+  trip: { id: string; name: string; coverImageUrl: string | null }
   profile: ProfileRow
   displayName: string
   addressLine: string | null
@@ -565,6 +594,32 @@ const {
     (profRows ?? []).map((p) => [p.id, p as ProfileRow]),
   )
 
+  /**
+   * 取每個旅程的封面圖：以 sort_order 升序回所有相關照片，
+   * 在 client 端對每個 trip_id 取首筆（即 sort_order 最小者）。
+   */
+  const tripIds = [...new Set(rows.map((r) => r.trip_id))]
+  const tripCoverByTripId = new Map<string, string>()
+  if (tripIds.length) {
+    const { data: coverRows, error: coverErr } = await supabase
+      .from("photos")
+      .select("trip_id, image_url, sort_order")
+      .in("trip_id", tripIds)
+      .order("sort_order", { ascending: true })
+
+    if (coverErr) throw coverErr
+
+    for (const cr of (coverRows ?? []) as {
+      trip_id: string
+      image_url: string
+      sort_order: number
+    }[]) {
+      if (!tripCoverByTripId.has(cr.trip_id)) {
+        tripCoverByTripId.set(cr.trip_id, cr.image_url)
+      }
+    }
+  }
+
   const items: FeedItem[] = rows.map((row) => {
     const authorUserId = row.user_id
     const profile = profileMap.get(authorUserId) ?? {
@@ -588,7 +643,11 @@ const {
         longitude: lng,
         place_name: row.place_name,
       },
-      trip: { id: row.trips.id, name: row.trips.name },
+      trip: {
+        id: row.trips.id,
+        name: row.trips.name,
+        coverImageUrl: tripCoverByTripId.get(row.trips.id) ?? null,
+      },
       profile,
       displayName,
       addressLine: photoAddressLine(row),
@@ -904,24 +963,29 @@ onMounted(async () => {
   box-sizing: border-box;
   max-width: 32rem;
   margin: 0 auto;
-  padding: 1rem 1.25rem 1.5rem;
+  padding: 0;
+  background: var(--color-white);
 }
 
 .feed-page__error {
   margin: 0;
-  padding: 0.75rem 0;
-  font-size: 0.875rem;
-  color: var(--color-danger);
+  padding: 1rem 1rem 0.75rem;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-red-500);
 }
 
 .feed-page__state {
   margin: 0;
-  padding: 1rem 0;
-  font-size: 0.9375rem;
-  color: var(--color-text);
+  padding: 1rem;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-gray-900);
 
   &--muted {
-    color: var(--color-text-muted);
+    color: var(--color-gray-500);
   }
 }
 
@@ -931,35 +995,85 @@ onMounted(async () => {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
+  gap: 0;
 }
 
 .feed-page__sentinel {
   height: 1px;
-  margin-top: 0.5rem;
   pointer-events: none;
 }
 
+/* === Feed Photo Card === */
 .feed-photo-card {
-  border-radius: 0.75rem;
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  overflow: hidden;
-  box-shadow: 0 2px 12px rgba(15, 23, 42, 0.06);
   display: flex;
   flex-direction: column;
+  background: var(--color-white);
 }
 
+/* Author row（卡片頂部） */
+.feed-photo-card__author-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 16px;
+  text-decoration: none;
+  color: inherit;
+  transition: opacity 0.15s ease;
+
+  &:hover {
+    opacity: 0.85;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-gray-900);
+    outline-offset: -2px;
+  }
+}
+
+.feed-photo-card__avatar-wrap {
+  box-sizing: border-box;
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-gray-100);
+}
+
+.feed-photo-card__avatar-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+}
+
+.feed-photo-card__avatar-fallback {
+  color: var(--color-gray-500);
+}
+
+.feed-photo-card__author-name {
+  color: var(--color-gray-900);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+/* 照片區（保留 feedPhotoLayout 切換 natural / crop-2-3） */
 .feed-photo-card__media {
   display: block;
   width: 100%;
   overflow: hidden;
-  background: rgba(15, 23, 42, 0.06);
+  background: var(--color-gray-100);
   text-decoration: none;
   color: inherit;
 
   &:focus-visible {
-    outline: 2px solid var(--color-accent);
+    outline: 2px solid var(--color-gray-900);
     outline-offset: -2px;
   }
 }
@@ -984,44 +1098,54 @@ onMounted(async () => {
   object-position: center;
 }
 
+/* Toolbar：左側 actions(讚/地圖/收藏) + 右側 trip 資訊 */
 .feed-photo-card__toolbar {
   display: flex;
   flex-direction: row;
   align-items: center;
-  justify-content: space-evenly;
-  gap: 0.25rem;
-  padding: 0.65rem 0.75rem 0.75rem;
-  border-top: 1px solid rgba(15, 23, 42, 0.06);
+  gap: 10px;
+  padding: 8px 16px;
 }
 
+.feed-photo-card__actions {
+  flex: 1 0 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+/**
+ * 依 Figma 設計：icon 容器精確 20×20，無外框 padding。
+ * gap 16px 是「icon 邊到下一個 icon 邊」的視覺距離。
+ */
 .feed-photo-card__icon-btn {
   box-sizing: border-box;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 44px;
-  min-height: 44px;
+  width: 20px;
+  height: 20px;
   padding: 0;
   margin: 0;
   font: inherit;
-  color: var(--color-text);
+  color: var(--color-gray-900);
   background: transparent;
   border: none;
-  border-radius: 0.5rem;
   cursor: pointer;
   text-decoration: none;
   transition:
     color 0.15s ease,
-    background 0.15s ease;
+    opacity 0.15s ease;
 
   &:hover:not(.feed-photo-card__icon-btn--disabled) {
-    color: var(--color-accent);
-    background: rgba(37, 99, 235, 0.06);
+    opacity: 0.7;
   }
 
   &:focus-visible {
-    outline: 2px solid var(--color-accent);
+    outline: 2px solid var(--color-gray-900);
     outline-offset: 2px;
+    border-radius: 2px;
   }
 }
 
@@ -1032,41 +1156,49 @@ onMounted(async () => {
 }
 
 .feed-photo-card__icon-btn--liked {
-  color: #dc2626;
-
-  &:hover:not(.feed-photo-card__icon-btn--disabled) {
-    color: #b91c1c;
-    background: rgba(220, 38, 38, 0.08);
-  }
+  color: var(--color-red-500);
 }
 
 .feed-photo-card__icon-btn--bookmarked {
-  color: var(--color-accent);
+  color: var(--color-gray-900);
+}
 
-  &:hover:not(.feed-photo-card__icon-btn--disabled) {
-    color: var(--color-accent-hover);
-    background: rgba(15, 23, 42, 0.06);
+/* Trip 連結（封面 + 名稱） */
+.feed-photo-card__trip-link {
+  flex: 1 0 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  text-decoration: none;
+  color: var(--color-gray-900);
+  transition: opacity 0.15s ease;
+
+  &:hover {
+    opacity: 0.85;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-gray-900);
+    outline-offset: 2px;
+    border-radius: 4px;
   }
 }
 
-.feed-photo-card__author-link:hover .feed-photo-card__avatar-wrap {
-  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.25);
-}
-
-.feed-photo-card__avatar-wrap {
+.feed-photo-card__trip-cover {
   flex-shrink: 0;
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
   overflow: hidden;
+  background: var(--color-gray-100);
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(15, 23, 42, 0.06);
-  border: 1px solid var(--color-border);
 }
 
-.feed-photo-card__avatar-img {
+.feed-photo-card__trip-cover-img {
   display: block;
   width: 100%;
   height: 100%;
@@ -1074,7 +1206,11 @@ onMounted(async () => {
   object-position: center;
 }
 
-.feed-photo-card__avatar-fallback {
-  color: var(--color-text-muted);
+.feed-photo-card__trip-name {
+  color: var(--color-gray-900);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 </style>

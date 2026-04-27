@@ -55,7 +55,7 @@
         to="/"
         @click.capture="onHomeNavClick"
       >
-        <Home :size="24" aria-hidden="true" />
+        <Home :size="28" aria-hidden="true" />
         <span class="layout-default__appbar-sr">首頁</span>
       </NuxtLink>
       <NuxtLink
@@ -64,7 +64,7 @@
         to="/map"
         @click.capture="onMapNavClick"
       >
-        <Map :size="24" aria-hidden="true" />
+        <Map :size="28" aria-hidden="true" />
         <span class="layout-default__appbar-sr">地圖</span>
       </NuxtLink>
       <NuxtLink
@@ -72,7 +72,7 @@
         to="/trips/new"
       >
         <span class="layout-default__appbar-plus">
-          <Plus :size="24" aria-hidden="true" />
+          <Plus :size="28" aria-hidden="true" />
         </span>
         <span class="layout-default__appbar-sr">建立旅程</span>
       </NuxtLink>
@@ -81,7 +81,7 @@
         :class="{ 'layout-default__appbar-btn--active': collectionsActive }"
         to="/collections"
       >
-        <Bookmark :size="24" aria-hidden="true" />
+        <Bookmark :size="28" aria-hidden="true" />
         <span class="layout-default__appbar-sr">收藏</span>
       </NuxtLink>
       <NuxtLink
@@ -94,10 +94,10 @@
           class="layout-default__appbar-avatar"
           :src="navAvatarDisplayUrl"
           alt=""
-          width="24"
-          height="24"
+          width="28"
+          height="28"
         />
-        <User v-else :size="24" aria-hidden="true" />
+        <User v-else :size="28" aria-hidden="true" />
         <span class="layout-default__appbar-sr">個人</span>
       </NuxtLink>
     </nav>
@@ -330,8 +330,8 @@ watch(
   }
 
   &__main--with-appbar {
-    /* Navbar 高度 48px = 8(top) + 32(plus 按鈕) + 8(bottom)；含底部安全區 */
-    padding-bottom: calc(48px + env(safe-area-inset-bottom, 0px));
+    /* Navbar 高度 52px = 8(top) + 36(plus 按鈕) + 8(bottom)；含底部安全區 */
+    padding-bottom: calc(52px + env(safe-area-inset-bottom, 0px));
   }
 
   /**
@@ -360,7 +360,7 @@ watch(
   }
 
   /**
-   * 一般按鈕（Home / Map / Bookmark / Profile）：嚴格 24×24 視覺尺寸。
+   * 一般按鈕（Home / Map / Bookmark / Profile）：嚴格 28×28 視覺尺寸。
    * 顏色：未選取 gray-500；選取 gray-900。
    */
   &__appbar-btn {
@@ -368,8 +368,8 @@ watch(
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 24px;
-    height: 24px;
+    width: 28px;
+    height: 28px;
     padding: 0;
     color: var(--color-gray-500);
     text-decoration: none;
@@ -394,11 +394,11 @@ watch(
 
   /**
    * Plus 按鈕：永遠黑底，不隨 active 切換樣式。
-   * 32×32 黑底圓角 8px、padding 4px、內含 24×24 白色 Plus icon。
+   * 36×36 黑底圓角 8px、padding 4px、內含 28×28 白色 Plus icon。
    */
   &__appbar-btn--plus {
-    width: 32px;
-    height: 32px;
+    width: 36px;
+    height: 36px;
   }
 
   &__appbar-plus {
@@ -406,8 +406,8 @@ watch(
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 32px;
-    height: 32px;
+    width: 36px;
+    height: 36px;
     padding: 4px;
     background: var(--color-gray-900);
     color: var(--color-white);
@@ -415,8 +415,8 @@ watch(
   }
 
   &__appbar-avatar {
-    width: 24px;
-    height: 24px;
+    width: 28px;
+    height: 28px;
     border-radius: 50%;
     object-fit: cover;
     display: block;

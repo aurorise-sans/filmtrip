@@ -178,7 +178,7 @@
 <script setup lang="ts">
 import { nextTick } from "vue"
 import { onBeforeRouteLeave } from "vue-router"
-import { Bookmark, Heart, Map as MapIcon, User } from "lucide-vue-next"
+import { Bookmark, Heart, MapPin as MapIcon, User } from "lucide-vue-next"
 import { resolveUserDisplayName } from "~/utils/resolveUserDisplayName"
 
 const FEED_SCROLL_STORAGE_KEY = "filmtrip-feed-scroll-y"

@@ -88,26 +88,30 @@
           <p class="nearby-page__grid-title text-body-medium-medium">500公尺內的照片</p>
         </section>
 
-        <ul class="nearby-page__grid" aria-label="附近照片">
-          <li
-            v-for="p in nearbyThumbs"
-            :key="p.id"
-            class="nearby-page__cell"
-          >
-            <NuxtLink
-              class="nearby-page__thumb-link"
-              :to="`/photos/${p.id}`"
+        <div class="nearby-page__grid-bleed">
+          <ul class="nearby-page__grid" aria-label="附近照片">
+            <li
+              v-for="p in nearbyThumbs"
+              :key="p.id"
+              class="nearby-page__cell"
             >
-              <img
-                class="nearby-page__thumb-img"
-                :src="p.image_url"
-                alt=""
-                loading="lazy"
-                decoding="async"
+              <button
+                type="button"
+                class="nearby-page__thumb-link"
+                :aria-label="`查看附近照片串流，起始照片 ${p.id}`"
+                @click="goNearbyFeed(p.id)"
               >
-            </NuxtLink>
-          </li>
-        </ul>
+                <img
+                  class="nearby-page__thumb-img"
+                  :src="p.image_url"
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                >
+              </button>
+            </li>
+          </ul>
+        </div>
         <p
           v-if="!nearbyPhotos.length"
           class="nearby-page__hint nearby-page__hint--muted nearby-page__section--padded nearby-page__hint--below-grid"
@@ -138,13 +142,21 @@ useHeader({
   center: "地點",
 })
 
-useHead({
-  bodyAttrs: {
-    class: "nearby-page--header-override",
-  },
-})
-
 const route = useRoute()
+const applyNearbyHeader = () => {
+  useHeader({
+    left: "back",
+    center: "地點",
+  })
+}
+
+watch(
+  () => route.fullPath,
+  () => {
+    applyNearbyHeader()
+  },
+  { immediate: true },
+)
 
 const photoId = computed(() => {
   const raw = route.params.photoId
@@ -351,6 +363,15 @@ const nearbyPhotos = computed(() => {
 
 /** 網格：僅 500 公尺內其他公開照片（不含當前照片） */
 const nearbyThumbs = computed((): PhotoWithTrip[] => nearbyPhotos.value)
+
+function goNearbyFeed(startPhotoId: string) {
+  const centerPhotoId = centerPhoto.value?.id
+  if (!centerPhotoId) return
+  void navigateTo({
+    path: `/nearby/${centerPhotoId}/feed`,
+    query: { start: startPhotoId },
+  })
+}
 
 const mapContainer = ref<HTMLElement | null>(null)
 let map: MapLibreMap | null = null
@@ -726,6 +747,12 @@ watch(
   gap: 4px;
 }
 
+.nearby-page__grid-bleed {
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
+  margin-right: calc(50% - 50vw);
+}
+
 .nearby-page__cell {
   margin: 0;
   aspect-ratio: 1;
@@ -737,6 +764,11 @@ watch(
   display: block;
   width: 100%;
   height: 100%;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
 }
 
 .nearby-page__thumb-img {
@@ -791,9 +823,4 @@ watch(
   outline-offset: 2px;
 }
 
-.nearby-page--header-override .layout-default__title {
-  font-size: 18px;
-  font-weight: 700;
-  line-height: 1.5;
-}
 </style>

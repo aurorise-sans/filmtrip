@@ -34,7 +34,7 @@
         </NuxtLink>
         <span
           v-else-if="typeof headerCenter === 'string'"
-          class="layout-default__title text-heading-medium-bold"
+          class="layout-default__title"
         >
           {{ headerCenter }}
         </span>
@@ -274,6 +274,9 @@ watch(
   }
 
   &__title {
+    font-family: var(--font-sans);
+    font-size: 18px;
+    font-weight: 700;
     color: var(--color-gray-900);
     line-height: 1;
   }

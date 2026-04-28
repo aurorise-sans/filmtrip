@@ -7,4 +7,6 @@ export type LocalPendingPhotoItem = {
   lng: number | null
   hasGps: boolean
   placeName: string
+  country: string | null
+  city: string | null
 }

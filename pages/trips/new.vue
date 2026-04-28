@@ -319,6 +319,8 @@ async function onComplete() {
       latitude: number | null
       longitude: number | null
       place_name: string | null
+      country: string | null
+      city: string | null
       sort_order: number
     }[] = []
 
@@ -344,6 +346,8 @@ async function onComplete() {
         latitude: item.lat,
         longitude: item.lng,
         place_name: item.placeName.trim() || null,
+        country: item.country,
+        city: item.city,
         sort_order: i + 1,
       })
     }

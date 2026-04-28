@@ -144,7 +144,7 @@
 <script setup lang="ts">
 import exifr from "exifr"
 import { mountReadonlyLocationMap } from "~/utils/maplibreClient"
-import { fetchReverseDisplayName } from "~/utils/reverseGeocode"
+import { fetchReverseGeocode } from "~/utils/reverseGeocode"
 
 const MAX_FILES = 36
 
@@ -172,6 +172,8 @@ type PendingItem = {
   lng: number | null
   hasGps: boolean
   placeName: string
+  country: string | null
+  city: string | null
 }
 
 const pendingItems = ref<PendingItem[]>([])
@@ -210,20 +212,10 @@ async function onPhotoLocationConfirm(lat: number, lng: number) {
   item.lng = lng
 
   if (kind === "pick") {
-    try {
-      const res = await fetch(
-        `/api/geocode/reverse?lat=${encodeURIComponent(String(lat))}&lng=${encodeURIComponent(String(lng))}`,
-      )
-      if (res.ok) {
-        const data = (await res.json()) as { display_name?: string }
-        const name = typeof data.display_name === "string" ? data.display_name.trim() : ""
-        item.placeName = name || coordLabel(lat, lng)
-      } else {
-        item.placeName = coordLabel(lat, lng)
-      }
-    } catch {
-      item.placeName = coordLabel(lat, lng)
-    }
+    const geo = await fetchReverseGeocode(lat, lng)
+    item.placeName = geo.displayName ?? coordLabel(lat, lng)
+    item.country = geo.country
+    item.city = geo.city
   }
 }
 
@@ -359,6 +351,8 @@ async function onFilesSelected(event: Event) {
       lng,
       hasGps,
       placeName: "",
+      country: null,
+      city: null,
     })
   }
 
@@ -373,8 +367,10 @@ async function onFilesSelected(event: Event) {
 
   await Promise.all(
     gpsItems.map(async (item) => {
-      const name = await fetchReverseDisplayName(item.lat, item.lng)
-      item.placeName = name ?? ""
+      const geo = await fetchReverseGeocode(item.lat, item.lng)
+      item.placeName = geo.displayName ?? ""
+      item.country = geo.country
+      item.city = geo.city
     }),
   )
 
@@ -441,6 +437,8 @@ async function submitUpload() {
     latitude: number | null
     longitude: number | null
     place_name: string | null
+    country: string | null
+    city: string | null
     sort_order: number
   }[] = []
 
@@ -472,6 +470,8 @@ async function submitUpload() {
         latitude: item.lat,
         longitude: item.lng,
         place_name: placeName,
+        country: item.country,
+        city: item.city,
         sort_order: nextSortOrder,
       })
       nextSortOrder += 1

@@ -21,55 +21,73 @@
               <div class="nearby-page__map-fallback">地圖載入中…</div>
             </template>
           </ClientOnly>
-        </div>
-        <div class="nearby-page__below-map nearby-page__section--padded">
-          <p class="nearby-page__address">
-            {{ addressLine ?? "無地址資訊" }}
-          </p>
-          <div class="nearby-page__actions" role="group" aria-label="照片位置操作">
-            <div class="nearby-page__actions-start">
-              <NuxtLink
-                class="nearby-page__action-btn nearby-page__action-btn--map"
-                :to="mapPageWithCoordsTo"
-              >
-                在地圖上查看
-              </NuxtLink>
-              <a
-                class="nearby-page__action-btn nearby-page__action-btn--gmaps"
-                :href="googleMapsUrl(centerPhoto.latitude!, centerPhoto.longitude!)"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                開啟 Google Maps
-              </a>
-            </div>
+
+          <div class="nearby-page__map-actions" role="group" aria-label="地圖操作">
+            <NuxtLink
+              class="nearby-page__map-action nearby-page__map-action--public text-body-small-medium"
+              :to="mapPageWithCoordsTo"
+            >
+              在公開地圖上瀏覽
+            </NuxtLink>
+            <a
+              class="nearby-page__map-action nearby-page__map-action--gmaps text-body-small-medium"
+              :href="googleMapsUrl(centerPhoto.latitude!, centerPhoto.longitude!)"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Google Map
+            </a>
             <button
               type="button"
-              class="nearby-page__bookmark-icon"
-              :class="{
-                'nearby-page__bookmark-icon--bookmarked': isCenterPhotoBookmarked,
-              }"
-              aria-label="收藏"
-              :aria-pressed="isCenterPhotoBookmarked"
-              @click="onNearbyBookmarkClick"
+              class="nearby-page__map-center"
+              aria-label="重新置中"
+              @click="recenterMapToCenter"
             >
-              <Bookmark
-                :size="22"
-                aria-hidden="true"
-                :fill="isCenterPhotoBookmarked ? 'currentColor' : 'none'"
-              />
+              <Crosshair :size="16" aria-hidden="true" />
             </button>
           </div>
         </div>
-        <CollectionSheet
-          v-if="bookmarkSheetPhotoId"
-          :photo-id="bookmarkSheetPhotoId"
-          :open="bookmarkSheetOpen"
-          :feed-collections="userCollections"
-          @close="bookmarkSheetOpen = false"
-          @closed="onBookmarkSheetClosed"
-          @saved="onBookmarkSaved"
-        />
+
+        <section class="nearby-page__section nearby-page__section--location">
+          <p class="nearby-page__location-title text-display-large-bold">
+            {{ locationPrimaryLine }}
+          </p>
+          <p
+            v-if="locationSecondaryLine"
+            class="nearby-page__location-subtitle text-body-medium"
+          >
+            {{ locationSecondaryLine }}
+          </p>
+        </section>
+
+        <section class="nearby-page__section nearby-page__section--trip">
+          <p class="nearby-page__trip-label text-body-medium-medium">所屬旅程</p>
+          <NuxtLink class="nearby-page__trip-row" :to="`/trips/${centerPhoto.trip_id}`">
+            <span class="nearby-page__trip-cover">
+              <img
+                v-if="tripCoverUrl"
+                :src="tripCoverUrl"
+                alt=""
+                loading="lazy"
+                decoding="async"
+              >
+            </span>
+            <span class="nearby-page__trip-copy">
+              <span class="nearby-page__trip-name text-display-xs-bold">
+                {{ centerPhoto.trips.name }}
+              </span>
+              <span class="nearby-page__trip-owner text-body-small">
+                {{ tripOwnerName }}
+              </span>
+            </span>
+            <ChevronRight :size="24" aria-hidden="true" class="nearby-page__trip-chevron" />
+          </NuxtLink>
+        </section>
+
+        <section class="nearby-page__section nearby-page__section--grid-title">
+          <p class="nearby-page__grid-title text-body-medium-medium">500公尺內的照片</p>
+        </section>
+
         <ul class="nearby-page__grid" aria-label="附近照片">
           <li
             v-for="p in nearbyThumbs"
@@ -109,11 +127,22 @@
 
 <script setup lang="ts">
 import { nextTick, watch } from "vue"
-import { Bookmark } from "lucide-vue-next"
+import { ChevronRight, Crosshair } from "lucide-vue-next"
 import { OPENFREEMAP_LIBERTY_STYLE, waitForMapLibreGl } from "~/utils/maplibreClient"
 import { haversineDistanceMeters } from "~/utils/haversine"
 
 const RADIUS_M = 500
+
+useHeader({
+  left: "back",
+  center: "地點",
+})
+
+useHead({
+  bodyAttrs: {
+    class: "nearby-page--header-override",
+  },
+})
 
 const route = useRoute()
 
@@ -130,102 +159,21 @@ type PhotoWithTrip = {
   latitude: number | null
   longitude: number | null
   place_name: string | null
+  country: string | null
+  city: string | null
   trip_id: string
+  user_id: string
   trips: TripEmbed
 }
 
+type NearbyBundle = {
+  center: PhotoWithTrip | null
+  pool: PhotoWithTrip[]
+  tripCoverUrl: string | null
+  tripOwnerName: string | null
+}
+
 const supabase = useSupabaseClient()
-const user = useSupabaseUser()
-
-const userCollections = ref<
-  { id: string; name: string; created_at: string }[]
->([])
-/** 目前登入者是否已將此照片加入任一收藏夾 */
-const isCenterPhotoBookmarked = ref(false)
-
-const bookmarkSheetOpen = ref(false)
-const bookmarkSheetPhotoId = ref<string | null>(null)
-
-async function fetchUserCollections() {
-  const {
-    data: { user: u },
-  } = await supabase.auth.getUser()
-  if (!u) {
-    userCollections.value = []
-    return
-  }
-  const { data: rows, error } = await supabase
-    .from("collections")
-    .select("id, name, created_at")
-    .order("created_at", { ascending: true })
-  if (error) throw error
-  userCollections.value = (rows ?? []) as {
-    id: string
-    name: string
-    created_at: string
-  }[]
-}
-
-/**
- * 查詢 collection_items（photo_id = 當前照片）；RLS 下僅會看到本人收藏夾內的列。
- * 有任何一筆則顯示實心書籤。
- */
-async function fetchCenterPhotoBookmarkMeta() {
-  const id = photoId.value
-  if (!id) {
-    isCenterPhotoBookmarked.value = false
-    return
-  }
-
-  const {
-    data: { user: u },
-  } = await supabase.auth.getUser()
-  if (!u) {
-    isCenterPhotoBookmarked.value = false
-    return
-  }
-
-  const { data: itemRows, error } = await supabase
-    .from("collection_items")
-    .select("photo_id")
-    .eq("photo_id", id)
-    .limit(1)
-
-  if (error) throw error
-  isCenterPhotoBookmarked.value = (itemRows?.length ?? 0) > 0
-}
-
-async function refreshNearbyCollectionContext() {
-  await fetchUserCollections()
-  await fetchCenterPhotoBookmarkMeta()
-}
-
-async function onNearbyBookmarkClick() {
-  if (!user.value) {
-    await navigateTo("/login")
-    return
-  }
-  bookmarkSheetPhotoId.value = photoId.value
-  bookmarkSheetOpen.value = true
-}
-
-function onBookmarkSheetClosed() {
-  bookmarkSheetPhotoId.value = null
-}
-
-async function onBookmarkSaved(payload: {
-  photoId: string
-  isBookmarked: boolean
-}) {
-  if (payload.photoId === photoId.value) {
-    isCenterPhotoBookmarked.value = payload.isBookmarked
-  }
-  try {
-    await refreshNearbyCollectionContext()
-  } catch {
-    /* ignore */
-  }
-}
 
 const {
   data: bundle,
@@ -233,16 +181,21 @@ const {
   error: loadErr,
 } = await useAsyncData(
   () => `nearby-${photoId.value}`,
-  async () => {
+  async (): Promise<NearbyBundle> => {
     const id = photoId.value
     if (!id) {
-      return { center: null as PhotoWithTrip | null, pool: [] as PhotoWithTrip[] }
+      return {
+        center: null,
+        pool: [],
+        tripCoverUrl: null,
+        tripOwnerName: null,
+      }
     }
 
     const { data: centerRow, error: cErr } = await supabase
       .from("photos")
       .select(
-        "id, image_url, latitude, longitude, place_name, trip_id, trips!inner(id, name, is_public)",
+        "id, image_url, latitude, longitude, place_name, country, city, trip_id, user_id, trips!inner(id, name, is_public)",
       )
       .eq("id", id)
       .maybeSingle()
@@ -251,23 +204,51 @@ const {
 
     const center = centerRow as PhotoWithTrip | null
     if (!center || !center.trips?.is_public) {
-      return { center: null, pool: [] as PhotoWithTrip[] }
+      return {
+        center: null,
+        pool: [],
+        tripCoverUrl: null,
+        tripOwnerName: null,
+      }
     }
 
-    const { data: poolRows, error: pErr } = await supabase
-      .from("photos")
-      .select(
-        "id, image_url, latitude, longitude, place_name, trip_id, trips!inner(id, name, is_public)",
-      )
-      .eq("trips.is_public", true)
-      .not("latitude", "is", null)
-      .not("longitude", "is", null)
+    const [{ data: poolRows, error: pErr }, { data: coverRow, error: coverErr }, { data: ownerRow, error: ownerErr }] =
+      await Promise.all([
+        supabase
+          .from("photos")
+          .select(
+            "id, image_url, latitude, longitude, place_name, country, city, trip_id, user_id, trips!inner(id, name, is_public)",
+          )
+          .eq("trips.is_public", true)
+          .not("latitude", "is", null)
+          .not("longitude", "is", null),
+        supabase
+          .from("photos")
+          .select("image_url")
+          .eq("trip_id", center.trip_id)
+          .order("sort_order", { ascending: true })
+          .limit(1)
+          .maybeSingle(),
+        supabase
+          .from("profiles")
+          .select("display_name")
+          .eq("id", center.user_id)
+          .maybeSingle(),
+      ])
 
     if (pErr) throw pErr
+    if (coverErr) {
+      console.warn("[nearby] 無法載入旅程封面", coverErr)
+    }
+    if (ownerErr) {
+      console.warn("[nearby] 無法載入旅程作者", ownerErr)
+    }
 
     return {
       center,
       pool: (poolRows ?? []) as PhotoWithTrip[],
+      tripCoverUrl: coverRow?.image_url ?? null,
+      tripOwnerName: ownerRow?.display_name ?? null,
     }
   },
   { watch: [photoId] },
@@ -275,38 +256,13 @@ const {
 
 const centerPhoto = computed(() => bundle.value?.center ?? null)
 const pool = computed(() => bundle.value?.pool ?? [])
+const tripCoverUrl = computed(() => bundle.value?.tripCoverUrl ?? null)
+const tripOwnerName = computed(() => {
+  const name = bundle.value?.tripOwnerName?.trim() ?? ""
+  return name || "使用者"
+})
 
 const loadError = computed(() => loadErr.value?.message ?? "")
-
-watch(
-  () =>
-    [user.value?.id ?? "", photoId.value, centerPhoto.value?.id ?? ""] as const,
-  async () => {
-    if (!import.meta.client) return
-    if (!photoId.value || !centerPhoto.value) {
-      isCenterPhotoBookmarked.value = false
-      userCollections.value = []
-      return
-    }
-    try {
-      await refreshNearbyCollectionContext()
-    } catch {
-      /* ignore */
-    }
-  },
-  { immediate: true },
-)
-
-function photoAddressLine(photo: {
-  place_name?: string | null
-}): string | null {
-  const place = photo.place_name?.trim() ?? ""
-  return place.length ? place : null
-}
-
-const addressLine = computed(() =>
-  centerPhoto.value ? photoAddressLine(centerPhoto.value) : null,
-)
 
 const hasCenterCoords = computed(() => {
   const p = centerPhoto.value
@@ -319,12 +275,32 @@ const hasCenterCoords = computed(() => {
   )
 })
 
+const locationPrimaryLine = computed(() => {
+  const p = centerPhoto.value
+  if (!p) return "無地址資訊"
+  const country = p.country?.trim() ?? ""
+  const city = p.city?.trim() ?? ""
+  const place = p.place_name?.trim() ?? ""
+  if (country && city) return `${country}・${city}`
+  return place || "無地址資訊"
+})
+
+const locationSecondaryLine = computed(() => {
+  const p = centerPhoto.value
+  if (!p) return null
+  const country = p.country?.trim() ?? ""
+  const city = p.city?.trim() ?? ""
+  const place = p.place_name?.trim() ?? ""
+  if (!country || !city) return null
+  return place || null
+})
+
 function googleMapsUrl(lat: number, lng: number) {
   const q = encodeURIComponent(`${lat},${lng}`)
   return `https://www.google.com/maps/search/?api=1&query=${q}`
 }
 
-/** 帶經緯度讓 /map 初始飛到該點（query 為 lat / lng） */
+/** 帶經緯度讓 /map 初始飛到該點（query 為 tab / lat / lng） */
 const mapPageWithCoordsTo = computed(() => {
   const p = centerPhoto.value
   if (
@@ -334,11 +310,17 @@ const mapPageWithCoordsTo = computed(() => {
     Number.isNaN(p.latitude) ||
     Number.isNaN(p.longitude)
   ) {
-    return "/map"
+    return {
+      path: "/map",
+      query: {
+        tab: "public",
+      },
+    }
   }
   return {
     path: "/map",
     query: {
+      tab: "public",
       lat: String(p.latitude),
       lng: String(p.longitude),
     },
@@ -373,6 +355,16 @@ const nearbyThumbs = computed((): PhotoWithTrip[] => nearbyPhotos.value)
 const mapContainer = ref<HTMLElement | null>(null)
 let map: MapLibreMap | null = null
 const markers: MapLibreMarker[] = []
+
+function recenterMapToCenter() {
+  const p = centerPhoto.value
+  if (!map || !p || p.latitude == null || p.longitude == null) return
+  map.flyTo({
+    center: [p.longitude, p.latitude],
+    zoom: 14,
+    duration: 0,
+  })
+}
 
 function createCenterPhotoMarkerElement(
   imageUrl: string,
@@ -474,8 +466,6 @@ watch(
       attributionControl: false,
     })
 
-    map.addControl(new maplibregl.NavigationControl(), "top-right")
-
     const markerEl = createCenterPhotoMarkerElement(c.image_url, c.id)
     const mCenter = new maplibregl.Marker({
       element: markerEl,
@@ -547,207 +537,200 @@ watch(
 }
 
 .nearby-page__section--padded {
-  padding-left: 1.25rem;
-  padding-right: 1.25rem;
+  padding-left: 1rem;
+  padding-right: 1rem;
   box-sizing: border-box;
 }
 
+.nearby-page__hint {
+  margin: 0;
+  color: var(--color-gray-900);
+
+  &--muted {
+    color: var(--color-gray-500);
+  }
+
+  &--below-grid {
+    margin-top: 0.75rem;
+  }
+}
+
+.nearby-page__error {
+  margin: 0 1rem;
+  padding: 0.65rem 0.75rem;
+  color: var(--color-red-500);
+  background: color-mix(in srgb, var(--color-red-500) 12%, var(--color-white));
+  border-radius: 0.375rem;
+}
+
 .nearby-page__map-bleed {
+  position: relative;
   width: 100vw;
   margin-left: calc(50% - 50vw);
   margin-right: calc(50% - 50vw);
   box-sizing: border-box;
 }
 
-.nearby-page__below-map {
-  padding-top: 0.75rem;
-  padding-bottom: 0.85rem;
-  box-sizing: border-box;
-}
-
-.nearby-page__hint {
-  margin: 0;
-  font-size: 0.9375rem;
-  color: var(--color-text);
-
-  &--muted {
-    color: var(--color-text-muted);
-  }
-
-  &--below-grid {
-    margin-top: 0.5rem;
-  }
-}
-
-.nearby-page__error {
-  margin: 0 1.25rem;
-  padding: 0.65rem 0.75rem;
-  font-size: 0.875rem;
-  color: var(--color-danger);
-  background: var(--color-danger-bg);
-  border-radius: 0.375rem;
-}
-
-.nearby-page__address {
-  margin: 0 0 0.75rem;
-  font-size: 0.9375rem;
-  line-height: 1.45;
-  color: var(--color-text);
-}
-
-.nearby-page__actions {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  width: 100%;
-  box-sizing: border-box;
-}
-
-.nearby-page__actions-start {
-  display: flex;
-  flex-direction: row;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem;
-  min-width: 0;
-  flex: 1;
-}
-
-.nearby-page__action-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.35rem;
-  box-sizing: border-box;
-  min-width: 0;
-  margin: 0;
-  padding: 0.45rem 0.65rem;
-  font-size: 0.8125rem;
-  font-weight: 500;
-  line-height: 1.25;
-  text-align: center;
-  text-decoration: none;
-  border-radius: 0.5rem;
-  cursor: pointer;
-  transition:
-    background 0.15s ease,
-    border-color 0.15s ease,
-    opacity 0.15s ease;
-
-  &--map {
-    color: var(--color-text);
-    border: 1px solid var(--color-border);
-    background: var(--color-surface);
-
-    &:hover {
-      background: rgba(15, 23, 42, 0.04);
-      border-color: var(--color-border-strong);
-    }
-
-    &:focus-visible {
-      outline: 2px solid var(--color-accent);
-      outline-offset: 2px;
-    }
-  }
-
-  &--gmaps {
-    color: var(--color-accent);
-    border: 1px solid rgba(37, 99, 235, 0.35);
-    background: rgba(37, 99, 235, 0.06);
-
-    &:hover {
-      background: rgba(37, 99, 235, 0.1);
-      border-color: var(--color-accent);
-    }
-
-    &:focus-visible {
-      outline: 2px solid var(--color-accent);
-      outline-offset: 2px;
-    }
-  }
-}
-
-.nearby-page__bookmark-icon {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 2.5rem;
-  height: 2.5rem;
-  margin: 0;
-  padding: 0;
-  color: var(--color-text-muted);
-  border: 1px solid var(--color-border);
-  border-radius: 0.5rem;
-  background: var(--color-surface);
-  cursor: pointer;
-  transition:
-    color 0.15s ease,
-    background 0.15s ease,
-    border-color 0.15s ease;
-
-  &:hover {
-    color: var(--color-accent);
-    background: rgba(37, 99, 235, 0.06);
-    border-color: rgba(37, 99, 235, 0.35);
-  }
-
-  &:focus-visible {
-    outline: 2px solid var(--color-accent);
-    outline-offset: 2px;
-  }
-
-  &--bookmarked {
-    color: var(--color-accent);
-    border-color: rgba(37, 99, 235, 0.35);
-
-    &:hover {
-      color: var(--color-accent-hover, var(--color-accent));
-      background: rgba(15, 23, 42, 0.06);
-    }
-  }
-}
-
 .nearby-page__map {
   width: 100%;
-  height: min(52vh, 22rem);
-  border-radius: 0;
-  overflow: hidden;
+  height: 280px;
   border: none;
-  border-top: 1px solid var(--color-border);
-  border-bottom: 1px solid var(--color-border);
-  background: rgba(15, 23, 42, 0.06);
+  background: var(--color-gray-100);
 }
 
 .nearby-page__map-fallback {
   margin: 0;
-  padding: 2rem 1rem;
-  font-size: 0.875rem;
-  color: var(--color-text-muted);
-  text-align: center;
+  height: 280px;
+  display: grid;
+  place-items: center;
+  color: var(--color-gray-500);
+  background: var(--color-gray-100);
+}
+
+.nearby-page__map-actions {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.nearby-page__map-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 12px;
+  text-decoration: none;
+  border-radius: 999px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+
+  &--public {
+    color: var(--color-white);
+    background: var(--color-gray-900);
+  }
+
+  &--gmaps {
+    color: var(--color-gray-900);
+    background: var(--color-white);
+    border: 1px solid var(--color-gray-100);
+  }
+}
+
+.nearby-page__map-center {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-gray-900);
+  background: var(--color-white);
   border: none;
-  border-top: 1px dashed var(--color-border);
-  border-bottom: 1px dashed var(--color-border);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.nearby-page__section {
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.nearby-page__section--location,
+.nearby-page__section--trip {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--color-gray-100);
+}
+
+.nearby-page__location-title {
+  margin: 0;
+  color: var(--color-gray-900);
+}
+
+.nearby-page__location-subtitle {
+  margin: 4px 0 0;
+  color: var(--color-gray-500);
+}
+
+.nearby-page__trip-label {
+  margin: 0 0 8px;
+  color: var(--color-gray-700);
+}
+
+.nearby-page__trip-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  text-decoration: none;
+  color: inherit;
+}
+
+.nearby-page__trip-cover {
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--color-gray-100);
+
+  img {
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: cover;
+  }
+}
+
+.nearby-page__trip-copy {
+  flex: 1;
+  min-width: 0;
+  margin: 0 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.nearby-page__trip-name {
+  color: var(--color-gray-900);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nearby-page__trip-owner {
+  color: var(--color-gray-500);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nearby-page__trip-chevron {
+  flex-shrink: 0;
+  color: var(--color-gray-900);
+}
+
+.nearby-page__section--grid-title {
+  padding: 12px 16px;
+}
+
+.nearby-page__grid-title {
+  margin: 0;
+  color: var(--color-gray-500);
 }
 
 .nearby-page__grid {
   list-style: none;
   margin: 0;
-  padding: 0 1.25rem;
-  box-sizing: border-box;
+  padding: 0;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 0.5rem;
+  gap: 4px;
 }
 
 .nearby-page__cell {
   margin: 0;
   aspect-ratio: 1;
-  border-radius: 0.35rem;
   overflow: hidden;
-  background: rgba(15, 23, 42, 0.06);
+  background: var(--color-gray-100);
 }
 
 .nearby-page__thumb-link {
@@ -806,5 +789,11 @@ watch(
 .nearby-page__map-marker:focus-visible {
   outline: 2px solid #2563eb;
   outline-offset: 2px;
+}
+
+.nearby-page--header-override .layout-default__title {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.5;
 }
 </style>

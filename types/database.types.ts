@@ -81,6 +81,8 @@ export interface Database {
           latitude: number | null
           longitude: number | null
           place_name: string | null
+          country: string | null
+          city: string | null
           created_at: string
           sort_order: number
         }
@@ -92,6 +94,8 @@ export interface Database {
           latitude?: number | null
           longitude?: number | null
           place_name?: string | null
+          country?: string | null
+          city?: string | null
           created_at?: string
           sort_order: number
         }
@@ -102,6 +106,8 @@ export interface Database {
           latitude?: number | null
           longitude?: number | null
           place_name?: string | null
+          country?: string | null
+          city?: string | null
           sort_order?: number
         }
         Relationships: []

@@ -115,7 +115,7 @@
 import exifr from "exifr"
 import { VueDraggable } from "vue-draggable-plus"
 import type { LocalPendingPhotoItem } from "~/types/tripPhotoLocal"
-import { fetchReverseDisplayName } from "~/utils/reverseGeocode"
+import { fetchReverseGeocode } from "~/utils/reverseGeocode"
 
 const MAX_FILES = 36
 
@@ -202,8 +202,10 @@ async function onPhotoLocationConfirm(lat: number, lng: number) {
   item.lng = lng
 
   if (kind === "pick") {
-    const name = await fetchReverseDisplayName(lat, lng)
-    item.placeName = name ?? coordLabel(lat, lng)
+    const geo = await fetchReverseGeocode(lat, lng)
+    item.placeName = geo.displayName ?? coordLabel(lat, lng)
+    item.country = geo.country
+    item.city = geo.city
   }
 }
 
@@ -316,6 +318,8 @@ async function onFilesSelected(event: Event) {
       lng,
       hasGps,
       placeName: "",
+      country: null,
+      city: null,
     })
   }
 
@@ -330,8 +334,10 @@ async function onFilesSelected(event: Event) {
 
   await Promise.all(
     gpsItems.map(async (item) => {
-      const name = await fetchReverseDisplayName(item.lat, item.lng)
-      item.placeName = name ?? ""
+      const geo = await fetchReverseGeocode(item.lat, item.lng)
+      item.placeName = geo.displayName ?? ""
+      item.country = geo.country
+      item.city = geo.city
     }),
   )
 
@@ -374,8 +380,10 @@ async function getPendingItems(): Promise<readonly LocalPendingPhotoItem[]> {
   if (needName.length) {
     await Promise.all(
       needName.map(async (item) => {
-        const name = await fetchReverseDisplayName(item.lat!, item.lng!)
-        item.placeName = name ?? ""
+        const geo = await fetchReverseGeocode(item.lat!, item.lng!)
+        item.placeName = geo.displayName ?? ""
+        item.country = geo.country
+        item.city = geo.city
       }),
     )
   }

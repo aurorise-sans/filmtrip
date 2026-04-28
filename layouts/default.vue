@@ -9,7 +9,7 @@
           aria-label="返回"
           @click="onHeaderBack"
         >
-          <ChevronLeft :size="22" aria-hidden="true" />
+          <ChevronLeft :size="28" aria-hidden="true" />
         </button>
         <button
           v-else-if="headerLeftCustom"
@@ -19,7 +19,7 @@
         >
           <component
             :is="headerLeftCustom.icon"
-            :size="22"
+            :size="28"
             aria-hidden="true"
           />
         </button>
@@ -46,7 +46,7 @@
           class="layout-default__header-action"
           @click="headerRight.onClick"
         >
-          <component :is="headerRight.icon" :size="22" aria-hidden="true" />
+          <component :is="headerRight.icon" :size="28" aria-hidden="true" />
         </button>
       </div>
     </header>
@@ -235,8 +235,8 @@ watch(
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 44px;
-    height: 44px;
+    width: 28px;
+    height: 28px;
     padding: 0;
     font: inherit;
     color: var(--color-text);
@@ -257,14 +257,6 @@ watch(
       outline: 2px solid var(--color-accent);
       outline-offset: 2px;
     }
-  }
-
-  &__header-start &__header-action {
-    margin-left: -0.35rem;
-  }
-
-  &__header-end &__header-action {
-    margin-right: -0.35rem;
   }
 
   &__brand {

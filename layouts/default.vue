@@ -1,40 +1,52 @@
 <template>
   <div class="layout-default">
     <header class="layout-default__header">
-      <div
-        class="layout-default__header-start"
-        :aria-hidden="showLayoutHeaderBack ? undefined : true"
-      >
+      <div class="layout-default__header-start">
         <button
-          v-if="showLayoutHeaderBack"
+          v-if="headerLeft === 'back'"
           type="button"
-          class="layout-default__header-back"
+          class="layout-default__header-action"
           aria-label="返回"
-          @click="onLayoutHeaderBack"
+          @click="onHeaderBack"
         >
           <ChevronLeft :size="22" aria-hidden="true" />
         </button>
-      </div>
-      <NuxtLink class="layout-default__brand" to="/">Filmtrip</NuxtLink>
-      <div class="layout-default__header-end">
-        <NuxtLink
-          v-if="!user"
-          class="layout-default__header-login"
-          to="/login"
-        >
-          登入
-        </NuxtLink>
         <button
-          v-else-if="isProfilePage"
+          v-else-if="headerLeftCustom"
           type="button"
-          class="layout-default__header-settings"
-          aria-label="設定"
-          aria-haspopup="dialog"
-          :aria-expanded="profileSettingsOpen"
-          aria-controls="profile-settings-dialog"
-          @click="profileSettingsOpen = true"
+          class="layout-default__header-action"
+          @click="headerLeftCustom.onClick"
         >
-          <Settings :size="22" aria-hidden="true" />
+          <component
+            :is="headerLeftCustom.icon"
+            :size="22"
+            aria-hidden="true"
+          />
+        </button>
+      </div>
+      <div class="layout-default__header-center">
+        <NuxtLink
+          v-if="headerCenter === 'logo'"
+          class="layout-default__brand"
+          to="/"
+        >
+          Filmtrip
+        </NuxtLink>
+        <span
+          v-else-if="typeof headerCenter === 'string'"
+          class="layout-default__title text-heading-medium-bold"
+        >
+          {{ headerCenter }}
+        </span>
+      </div>
+      <div class="layout-default__header-end">
+        <button
+          v-if="headerRight"
+          type="button"
+          class="layout-default__header-action"
+          @click="headerRight.onClick"
+        >
+          <component :is="headerRight.icon" :size="22" aria-hidden="true" />
         </button>
       </div>
     </header>
@@ -111,7 +123,6 @@ import {
   Home,
   Map,
   Plus,
-  Settings,
   User,
 } from "lucide-vue-next"
 
@@ -119,38 +130,19 @@ const route = useRoute()
 const router = useRouter()
 const user = useSupabaseUser()
 
-/** `null`：依路由自動（例如 `/profile/:id` 顯示返回）；`true`/`false` 強制覆寫 */
-const layoutHeaderBackOverride = useState<boolean | null>(
-  "layout-header-back-override",
-  () => null,
-)
+const { left: headerLeft, center: headerCenter, right: headerRight } =
+  useHeaderState()
 
-watch(
-  () => route.fullPath,
-  () => {
-    layoutHeaderBackOverride.value = null
-  },
-)
-
-const showLayoutHeaderBack = computed(() => {
-  const o = layoutHeaderBackOverride.value
-  if (o === true) return true
-  if (o === false) return false
-  const parts = route.path.split("/").filter(Boolean)
-  if (parts.length === 2 && parts[0] === "profile") return true
-  if (parts.length === 2 && parts[0] === "trips") return true
-  if (parts.length === 2 && parts[0] === "nearby") return true
-  if (parts.length === 2 && parts[0] === "photos") return true
-  if (parts.length === 2 && parts[0] === "collections") return true
-  return false
+/** 自訂 left（非 'back' 也非 null 時的 object 形式），給 v-else-if 使用以滿足型別收窄 */
+const headerLeftCustom = computed(() => {
+  const v = headerLeft.value
+  if (v && v !== "back") return v
+  return null
 })
 
-function onLayoutHeaderBack() {
+function onHeaderBack() {
   router.back()
 }
-
-const profileSettingsOpen = useState("profile-settings-open", () => false)
-const isProfilePage = computed(() => route.path === "/profile")
 
 const { navAvatarDisplayUrl, loadProfileAvatarFromDb } = useNavProfileAvatar()
 
@@ -226,13 +218,25 @@ watch(
     min-width: 0;
   }
 
-  &__header-back {
+  &__header-center {
+    justify-self: center;
+    min-width: 0;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  &__header-end {
+    justify-self: end;
+    min-width: 0;
+  }
+
+  /** 共用：左/右側的 icon 按鈕（返回鍵與自訂 icon 都用這個） */
+  &__header-action {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     width: 44px;
     height: 44px;
-    margin-left: -0.35rem;
     padding: 0;
     font: inherit;
     color: var(--color-text);
@@ -255,62 +259,17 @@ watch(
     }
   }
 
-  &__header-end {
-    justify-self: end;
-    min-width: 0;
+  &__header-start &__header-action {
+    margin-left: -0.35rem;
   }
 
-  &__header-login {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 44px;
-    padding: 0.35rem 0.5rem;
-    margin-right: -0.25rem;
-    font: inherit;
-    font-size: 0.9375rem;
-    font-weight: 500;
-    color: var(--color-accent);
-    text-decoration: none;
-    border-radius: 0.375rem;
-
-    &:hover {
-      opacity: 0.85;
-    }
-
-    &:focus-visible {
-      outline: 2px solid var(--color-accent);
-      outline-offset: 2px;
-    }
-  }
-
-  &__header-settings {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 44px;
-    height: 44px;
-    padding: 0;
-    margin-right: -0.25rem;
-    font: inherit;
-    color: var(--color-text);
-    background: transparent;
-    border: none;
-    border-radius: 0.375rem;
-    cursor: pointer;
-
-    &:hover {
-      opacity: 0.85;
-    }
-
-    &:focus-visible {
-      outline: 2px solid var(--color-accent);
-      outline-offset: 2px;
-    }
+  &__header-end &__header-action {
+    margin-right: -0.35rem;
   }
 
   &__brand {
-    font-weight: 600;
+    font-family: var(--font-serif);
+    font-weight: 700;
     font-size: 1.125rem;
     line-height: 1;
     color: inherit;
@@ -320,6 +279,11 @@ watch(
     &:hover {
       opacity: 0.85;
     }
+  }
+
+  &__title {
+    color: var(--color-gray-900);
+    line-height: 1;
   }
 
   &__main {

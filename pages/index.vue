@@ -142,7 +142,7 @@
                     decoding="async"
                   >
                 </span>
-                <span class="feed-photo-card__trip-name text-body-medium-medium">
+                <span class="feed-photo-card__trip-name text-display-2xs-bold">
                   {{ row.trip.name }}
                 </span>
               </NuxtLink>

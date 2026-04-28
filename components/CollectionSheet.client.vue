@@ -25,7 +25,24 @@
             <span class="coll-sheet__handle" />
           </div>
 
-          <div class="coll-sheet__body">
+          <div class="coll-sheet__content">
+            <div class="coll-sheet__header">
+              <h2
+                id="coll-sheet-title"
+                class="coll-sheet__heading text-body-large-medium"
+              >
+                收藏分類
+              </h2>
+              <button
+                v-if="collections.length"
+                type="button"
+                class="coll-sheet__add-toggle text-body-medium-bold"
+                @click="toggleAddForm"
+              >
+                {{ showAddForm ? "取消新增" : "新增收藏分類" }}
+              </button>
+            </div>
+
             <p v-if="loadError" class="coll-sheet__error" role="alert">
               {{ loadError }}
             </p>
@@ -33,90 +50,103 @@
               載入中…
             </p>
 
-            <template v-else-if="!collections.length">
-              <h2 id="coll-sheet-title" class="coll-sheet__title">
-                建立你的第一個收藏夾
-              </h2>
-              <label class="coll-sheet__label" for="coll-sheet-first-name">
-                收藏夾名稱
-              </label>
-              <input
-                id="coll-sheet-first-name"
-                v-model="firstName"
-                type="text"
-                class="coll-sheet__input"
-                maxlength="120"
-                placeholder="例如：想去的景點"
-                autocomplete="off"
-                @keydown.enter.prevent="onConfirmFirst"
-              >
-            </template>
-
             <template v-else>
-              <h2 id="coll-sheet-title" class="coll-sheet__title">
-                加入收藏
-              </h2>
-              <ul class="coll-sheet__list" role="list">
+              <div
+                v-if="showAddForm || !collections.length"
+                class="coll-sheet__add-row"
+              >
+                <div class="coll-sheet__add-left">
+                  <span
+                    class="coll-sheet__check coll-sheet__check--filled"
+                    aria-hidden="true"
+                  >
+                    <Check :size="20" :stroke-width="2.4" />
+                  </span>
+                  <input
+                    v-model="newCollectionName"
+                    type="text"
+                    class="coll-sheet__input text-body-small"
+                    maxlength="120"
+                    placeholder="輸入你的收藏分名稱"
+                    autocomplete="off"
+                    :disabled="creating"
+                    @keydown.enter.prevent="onCreate"
+                  >
+                </div>
+                <button
+                  type="button"
+                  class="coll-sheet__create-btn text-body-medium-bold"
+                  :disabled="!newCollectionName.trim() || creating"
+                  @click="onCreate"
+                >
+                  {{ creating ? "建立中…" : "建立" }}
+                </button>
+              </div>
+
+              <ul
+                v-if="collections.length"
+                class="coll-sheet__list"
+                role="list"
+              >
                 <li
                   v-for="c in collections"
                   :key="c.id"
                   class="coll-sheet__row"
                 >
-                  <label class="coll-sheet__check-label">
+                  <label class="coll-sheet__row-label">
                     <input
                       v-model="selectedIds"
                       type="checkbox"
-                      class="coll-sheet__checkbox"
+                      class="coll-sheet__check-native"
                       :value="c.id"
                     >
-                    <span class="coll-sheet__check-text">{{ c.name }}</span>
+                    <span
+                      class="coll-sheet__check"
+                      :class="{
+                        'coll-sheet__check--filled': selectedIds.includes(c.id),
+                      }"
+                      aria-hidden="true"
+                    >
+                      <Check
+                        v-if="selectedIds.includes(c.id)"
+                        :size="20"
+                        :stroke-width="2.4"
+                      />
+                    </span>
+                    <span class="coll-sheet__cover">
+                      <img
+                        v-if="coversByCollection[c.id]"
+                        :src="coversByCollection[c.id]!"
+                        alt=""
+                        loading="lazy"
+                      >
+                    </span>
+                    <span class="coll-sheet__row-name text-display-xs-bold">
+                      {{ c.name }}
+                    </span>
                   </label>
                 </li>
               </ul>
+            </template>
 
-              <div v-if="showAddForm" class="coll-sheet__add-form">
-                <label class="coll-sheet__label" for="coll-sheet-new-name">
-                  新收藏夾名稱
-                </label>
-                <input
-                  id="coll-sheet-new-name"
-                  v-model="newCollectionName"
-                  type="text"
-                  class="coll-sheet__input"
-                  maxlength="120"
-                  placeholder="輸入名稱"
-                  autocomplete="off"
-                  @keydown.enter.prevent="onConfirm"
-                >
-              </div>
-
+            <div class="coll-sheet__buttons">
               <button
                 type="button"
-                class="coll-sheet__text-btn"
-                @click="showAddForm = !showAddForm"
+                class="coll-sheet__btn coll-sheet__btn--ghost text-body-large-bold"
+                :disabled="submitting || creating"
+                @click="requestClose"
               >
-                {{ showAddForm ? "收合新增收藏夾" : "新增收藏夾" }}
+                取消
               </button>
-            </template>
-          </div>
-
-          <div class="coll-sheet__footer">
-            <button
-              type="button"
-              class="coll-sheet__btn coll-sheet__btn--ghost"
-              :disabled="submitting"
-              @click="requestClose"
-            >
-              取消
-            </button>
-            <button
-              type="button"
-              class="coll-sheet__btn coll-sheet__btn--primary"
-              :disabled="confirmDisabled"
-              @click="collections.length ? onConfirm() : onConfirmFirst()"
-            >
-              {{ submitting ? "處理中…" : "確認" }}
-            </button>
+              <button
+                type="button"
+                class="coll-sheet__btn coll-sheet__btn--primary text-body-large-bold"
+                :disabled="confirmDisabled"
+                @click="onConfirm"
+              >
+                {{ submitting ? "處理中…" : "加入收藏" }}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -125,6 +155,8 @@
 </template>
 
 <script setup lang="ts">
+import { Check } from "lucide-vue-next"
+
 const props = defineProps<{
   photoId: string
   open: boolean
@@ -152,10 +184,12 @@ const collections = ref<CollectionRow[]>([])
 /** 開啟 sheet 時，該照片已所在的收藏夾 id */
 const memberCollectionIds = ref<Set<string>>(new Set())
 const selectedIds = ref<string[]>([])
-const firstName = ref("")
 const newCollectionName = ref("")
 const showAddForm = ref(false)
 const submitting = ref(false)
+const creating = ref(false)
+/** 每個收藏夾的封面照片 URL（最早加入的那張）；無照片時為 null */
+const coversByCollection = ref<Record<string, string | null>>({})
 
 const dragY = ref(0)
 let dragStartClientY = 0
@@ -167,10 +201,8 @@ const panelStyle = computed(() => {
 })
 
 const confirmDisabled = computed(() => {
-  if (submitting.value) return true
-  if (!collections.value.length) {
-    return !firstName.value.trim()
-  }
+  if (submitting.value || creating.value) return true
+  if (!collections.value.length) return true
   return false
 })
 
@@ -178,12 +210,63 @@ function syncSelectedFromMember() {
   selectedIds.value = [...memberCollectionIds.value]
 }
 
+function toggleAddForm() {
+  showAddForm.value = !showAddForm.value
+  if (!showAddForm.value) {
+    newCollectionName.value = ""
+  }
+}
+
+async function loadCovers(collectionIds: string[]) {
+  if (!collectionIds.length) {
+    coversByCollection.value = {}
+    return
+  }
+
+  const { data: coverRows, error: coverErr } = await supabase
+    .from("collection_items")
+    .select("collection_id, created_at, photos!inner(image_url)")
+    .in("collection_id", collectionIds)
+    .order("created_at", { ascending: true })
+
+  if (coverErr) {
+    console.warn("[CollectionSheet] covers 查詢失敗", coverErr)
+    coversByCollection.value = Object.fromEntries(
+      collectionIds.map((id) => [id, null]),
+    )
+    return
+  }
+
+  const map: Record<string, string | null> = Object.fromEntries(
+    collectionIds.map((id) => [id, null]),
+  )
+
+  for (const r of coverRows ?? []) {
+    const row = r as {
+      collection_id: string
+      photos: { image_url: string } | { image_url: string }[] | null
+    }
+    const cid = row.collection_id
+    if (!cid || map[cid] !== null) continue
+
+    let url: string | null = null
+    if (Array.isArray(row.photos)) {
+      url = row.photos[0]?.image_url ?? null
+    } else if (row.photos) {
+      url = row.photos.image_url ?? null
+    }
+    if (url) map[cid] = url
+  }
+
+  coversByCollection.value = map
+}
+
 async function loadSheet() {
   loading.value = true
   loadError.value = ""
-  firstName.value = ""
   newCollectionName.value = ""
   showAddForm.value = false
+  coversByCollection.value = {}
 
   try {
     const useFeedList =
@@ -214,6 +297,8 @@ async function loadSheet() {
 
       collections.value = (rows ?? []) as CollectionRow[]
     }
+
+    await loadCovers(collections.value.map((c) => c.id))
 
     const { data: itemRows, error: itemErr } = await supabase
       .from("collection_items")
@@ -331,11 +416,12 @@ function onDragStart(e: PointerEvent) {
   window.addEventListener("pointercancel", onUp)
 }
 
-async function onConfirmFirst() {
-  const name = firstName.value.trim()
-  if (!name || submitting.value) return
+async function onCreate() {
+  const name = newCollectionName.value.trim()
+  if (!name || creating.value) return
 
-  submitting.value = true
+  creating.value = true
+  loadError.value = ""
   try {
     const {
       data: { user },
@@ -348,69 +434,32 @@ async function onConfirmFirst() {
     const { data: col, error: cErr } = await supabase
       .from("collections")
       .insert({ user_id: user.id, name })
-      .select("id")
+      .select("id, name, created_at")
       .single()
 
     if (cErr) throw cErr
-    const collectionId = col?.id as string | undefined
-    if (!collectionId) throw new Error("建立收藏夾失敗")
-
-    const { error: iErr } = await supabase.from("collection_items").insert({
-      collection_id: collectionId,
-      photo_id: props.photoId,
-    })
-    if (iErr) throw iErr
-
-    emit("saved", { photoId: props.photoId, isBookmarked: true })
-    requestClose()
+    const row = col as CollectionRow
+    collections.value = [...collections.value, row].sort((a, b) =>
+      a.created_at.localeCompare(b.created_at),
+    )
+    coversByCollection.value = {
+      ...coversByCollection.value,
+      [row.id]: null,
+    }
+    selectedIds.value = [...selectedIds.value, row.id]
+    newCollectionName.value = ""
+    showAddForm.value = false
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : "儲存失敗"
+    const msg = e instanceof Error ? e.message : "建立收藏夾失敗"
     loadError.value = msg
   } finally {
-    submitting.value = false
+    creating.value = false
   }
 }
 
 async function onConfirm() {
-  if (!collections.value.length) {
-    await onConfirmFirst()
-    return
-  }
-
-  const name = newCollectionName.value.trim()
-  if (showAddForm.value && name) {
-    submitting.value = true
-    try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-      if (!user) {
-        loadError.value = "請先登入"
-        return
-      }
-
-      const { data: col, error: cErr } = await supabase
-        .from("collections")
-        .insert({ user_id: user.id, name })
-        .select("id, name, created_at")
-        .single()
-
-      if (cErr) throw cErr
-      const row = col as CollectionRow
-      collections.value = [...collections.value, row].sort((a, b) =>
-        a.created_at.localeCompare(b.created_at),
-      )
-      selectedIds.value = [...selectedIds.value, row.id]
-      newCollectionName.value = ""
-      showAddForm.value = false
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "建立收藏夾失敗"
-      loadError.value = msg
-      submitting.value = false
-      return
-    }
-    submitting.value = false
-  }
+  if (submitting.value || creating.value) return
+  if (!collections.value.length) return
 
   submitting.value = true
   loadError.value = ""
@@ -478,21 +527,18 @@ async function onConfirm() {
   width: 100%;
   max-width: 32rem;
   margin: 0 auto;
-  max-height: min(78vh, 560px);
+  max-height: 50vh;
   display: flex;
   flex-direction: column;
-  border-radius: 1rem 1rem 0 0;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-bottom: none;
-  box-shadow: 0 -8px 32px rgba(15, 23, 42, 0.12);
+  border-radius: 20px 20px 0 0;
+  background: var(--color-white);
   pointer-events: auto;
   transition: transform 0.28s cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 .coll-sheet__drag {
   flex-shrink: 0;
-  padding: 0.5rem 0 0.25rem;
+  padding: 8px 0 4px;
   cursor: grab;
   touch-action: none;
 
@@ -503,174 +549,278 @@ async function onConfirm() {
 
 .coll-sheet__handle {
   display: block;
-  width: 2.25rem;
+  width: 36px;
   height: 4px;
   margin: 0 auto;
   border-radius: 999px;
-  background: var(--color-border-strong);
+  background: var(--color-gray-200);
 }
 
-.coll-sheet__body {
+.coll-sheet__content {
   flex: 1;
   min-height: 0;
-  overflow: auto;
-  padding: 0 1.1rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 12px 16px calc(20px + env(safe-area-inset-bottom, 0));
 }
 
-.coll-sheet__title {
-  margin: 0 0 0.75rem;
-  font-size: 1.0625rem;
-  font-weight: 600;
-  color: var(--color-text);
+.coll-sheet__header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
 }
 
-.coll-sheet__state {
+.coll-sheet__heading {
   margin: 0;
-  padding: 0.5rem 0;
-  font-size: 0.9375rem;
-  color: var(--color-text-muted);
+  color: var(--color-gray-500);
 }
 
-.coll-sheet__error {
-  margin: 0 0 0.75rem;
-  font-size: 0.875rem;
-  color: var(--color-danger);
-}
+.coll-sheet__add-toggle {
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--color-gray-900);
+  cursor: pointer;
 
-.coll-sheet__label {
-  display: block;
-  margin-bottom: 0.35rem;
-  font-size: 0.8125rem;
-  color: var(--color-text-muted);
-}
-
-.coll-sheet__input {
-  box-sizing: border-box;
-  width: 100%;
-  padding: 0.6rem 0.75rem;
-  font: inherit;
-  font-size: 1rem;
-  color: var(--color-text);
-  background: var(--color-bg);
-  border: 1px solid var(--color-border);
-  border-radius: 0.5rem;
-  margin-bottom: 0.75rem;
-
-  &::placeholder {
-    color: var(--color-text-muted);
+  &:hover {
+    opacity: 0.7;
   }
 
   &:focus {
-    outline: 2px solid var(--color-accent);
-    outline-offset: 0;
+    outline: none;
+  }
+
+  &:focus-visible {
+    border-radius: 4px;
+    box-shadow: 0 0 0 2px var(--color-gray-900);
+  }
+}
+
+.coll-sheet__state,
+.coll-sheet__error {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 4px 16px;
+}
+
+.coll-sheet__state {
+  color: var(--color-gray-500);
+}
+
+.coll-sheet__error {
+  color: var(--color-red-500);
+}
+
+.coll-sheet__add-row {
+  flex-shrink: 0;
+  display: flex;
+  gap: 20px;
+  align-items: center;
+}
+
+.coll-sheet__add-left {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.coll-sheet__input {
+  flex: 1;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 8px 12px;
+  background: var(--color-white);
+  color: var(--color-gray-900);
+  border: 1px solid var(--color-gray-900);
+  border-radius: 8px;
+
+  &::placeholder {
+    color: var(--color-gray-200);
+  }
+
+  &:focus {
+    outline: none;
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+}
+
+.coll-sheet__create-btn {
+  flex-shrink: 0;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--color-gray-900);
+  cursor: pointer;
+  white-space: nowrap;
+
+  &:hover:not(:disabled) {
+    opacity: 0.7;
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  &:focus {
+    outline: none;
+  }
+
+  &:focus-visible {
+    border-radius: 4px;
+    box-shadow: 0 0 0 2px var(--color-gray-900);
   }
 }
 
 .coll-sheet__list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
   list-style: none;
   margin: 0;
   padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
 }
 
-.coll-sheet__row {
-  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+.coll-sheet__row-label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  cursor: pointer;
+}
 
-  &:last-child {
-    border-bottom: none;
+.coll-sheet__check-native {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.coll-sheet__check {
+  box-sizing: border-box;
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-white);
+  color: var(--color-white);
+  border: 1px solid var(--color-gray-100);
+  border-radius: 8px;
+
+  &--filled {
+    background: var(--color-gray-900);
+    border-color: var(--color-gray-900);
+    padding: 2px;
   }
 }
 
-.coll-sheet__check-label {
-  display: flex;
-  align-items: center;
-  gap: 0.65rem;
-  padding: 0.65rem 0;
-  cursor: pointer;
-  font-size: 0.9375rem;
-  color: var(--color-text);
+.coll-sheet__check-native:focus {
+  outline: none;
 }
 
-.coll-sheet__checkbox {
-  width: 1.1rem;
-  height: 1.1rem;
-  accent-color: var(--color-accent);
+.coll-sheet__check-native:focus-visible + .coll-sheet__check {
+  box-shadow: 0 0 0 2px var(--color-gray-900);
 }
 
-.coll-sheet__check-text {
+.coll-sheet__cover {
+  flex-shrink: 0;
+  display: block;
+  width: 48px;
+  height: 48px;
+  border-radius: 4px;
+  background: var(--color-gray-100);
+  overflow: hidden;
+
+  img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+}
+
+.coll-sheet__row-name {
   flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: var(--color-gray-900);
 }
 
-.coll-sheet__add-form {
-  margin-top: 0.5rem;
-}
-
-.coll-sheet__text-btn {
-  display: block;
-  width: 100%;
-  margin-top: 0.35rem;
-  padding: 0.5rem 0;
-  font: inherit;
-  font-size: 0.875rem;
-  color: var(--color-accent);
-  background: none;
-  border: none;
-  cursor: pointer;
-  text-align: left;
-
-  &:hover {
-    text-decoration: underline;
-  }
-
-  &:focus-visible {
-    outline: 2px solid var(--color-accent);
-    outline-offset: 2px;
-    border-radius: 0.25rem;
-  }
-}
-
-.coll-sheet__footer {
+.coll-sheet__buttons {
   flex-shrink: 0;
   display: flex;
-  gap: 0.5rem;
-  justify-content: flex-end;
-  padding: 0.65rem 1.1rem calc(0.85rem + env(safe-area-inset-bottom, 0));
-  border-top: 1px solid rgba(15, 23, 42, 0.06);
+  gap: 12px;
+  align-items: stretch;
 }
 
 .coll-sheet__btn {
-  min-height: 44px;
-  padding: 0 1rem;
-  font: inherit;
-  font-size: 0.9375rem;
-  font-weight: 500;
-  border-radius: 0.5rem;
+  box-sizing: border-box;
+  flex: 1;
+  min-width: 0;
+  padding: 8px 12px;
+  border-radius: 8px;
   cursor: pointer;
-  border: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 
   &:disabled {
     opacity: 0.5;
     cursor: not-allowed;
   }
 
+  &:focus {
+    outline: none;
+  }
+
+  &:focus-visible {
+    box-shadow: 0 0 0 2px var(--color-gray-900);
+  }
+
   &--ghost {
-    color: var(--color-text-muted);
-    background: transparent;
+    background: var(--color-white);
+    border: 1px solid var(--color-gray-900);
+    color: var(--color-gray-900);
 
     &:hover:not(:disabled) {
-      background: rgba(15, 23, 42, 0.05);
+      background: var(--color-gray-100);
     }
   }
 
   &--primary {
-    color: var(--color-surface);
-    background: var(--color-accent);
+    background: var(--color-gray-900);
+    border: 1px solid var(--color-gray-900);
+    color: var(--color-white);
 
     &:hover:not(:disabled) {
-      background: var(--color-accent-hover);
+      opacity: 0.9;
+    }
+
+    &:focus-visible {
+      box-shadow:
+        0 0 0 2px var(--color-white),
+        0 0 0 4px var(--color-gray-900);
     }
   }
 }

@@ -1,59 +1,105 @@
 <template>
   <div class="map-page">
-    <p v-if="fetchError" class="map-page__error" role="alert">{{ fetchError }}</p>
+    <div class="map-page__tabs" role="tablist" aria-label="地圖範圍">
+      <button
+        type="button"
+        class="map-page__tab"
+        :class="{ 'map-page__tab--active': mapTab === 'public' }"
+        role="tab"
+        :aria-selected="mapTab === 'public'"
+        @click="onMapTabClick('public')"
+      >
+        <span
+          :class="
+            mapTab === 'public'
+              ? 'text-body-medium-bold'
+              : 'text-body-medium'
+          "
+        >公開地圖</span>
+      </button>
+      <button
+        type="button"
+        class="map-page__tab"
+        :class="{ 'map-page__tab--active': mapTab === 'personal' }"
+        role="tab"
+        :aria-selected="mapTab === 'personal'"
+        @click="onMapTabClick('personal')"
+      >
+        <span
+          :class="
+            mapTab === 'personal'
+              ? 'text-body-medium-bold'
+              : 'text-body-medium'
+          "
+        >個人地圖</span>
+      </button>
+    </div>
 
-    <template v-if="!fetchError">
-      <div class="map-page__search">
-        <div class="map-page__geocode">
-          <label class="map-page__geocode-label">
-            <span class="map-page__geocode-sr">搜尋地點</span>
-            <input
-              v-model="geocodeQuery"
-              class="map-page__geocode-input"
-              type="search"
-              maxlength="200"
-              placeholder="搜尋地點…"
-              autocomplete="off"
-              aria-autocomplete="list"
-              :aria-expanded="geocodeListOpen"
-              aria-controls="map-geocode-list"
-              @input="onGeocodeInput"
-              @focus="onGeocodeFocus"
-              @blur="onGeocodeBlur"
-              @keydown.esc.stop="onGeocodeEscape"
-            />
-          </label>
-          <ul
-            v-if="geocodeListOpen"
-            id="map-geocode-list"
-            class="map-page__geocode-list"
-            role="listbox"
-          >
-            <li
-              v-if="geocodeLoading"
-              class="map-page__geocode-item map-page__geocode-item--muted"
-            >
-              搜尋中…
-            </li>
-            <li
-              v-for="feature in geocodeResults"
-              :key="feature.id"
-              class="map-page__geocode-item"
-              role="option"
-            >
-              <button
-                type="button"
-                class="map-page__geocode-pick"
-                @mousedown.prevent="selectGeocodeResult(feature)"
-              >
-                {{ feature.display_name }}
-              </button>
-            </li>
-          </ul>
-        </div>
-      </div>
+    <p
+      v-if="fetchError"
+      class="map-page__error text-body-medium"
+      role="alert"
+    >
+      {{ fetchError }}
+    </p>
 
+    <template v-if="!fetchError || mapReady">
       <div class="map-page__body">
+        <div class="map-page__search-float">
+          <div class="map-page__geocode">
+            <label class="map-page__geocode-row">
+              <Search
+                class="map-page__geocode-icon"
+                :size="16"
+                aria-hidden="true"
+              />
+              <span class="map-page__geocode-sr">搜尋地點</span>
+              <input
+                v-model="geocodeQuery"
+                class="map-page__geocode-input text-body-small"
+                type="search"
+                maxlength="200"
+                placeholder="搜尋地點"
+                autocomplete="off"
+                aria-autocomplete="list"
+                :aria-expanded="geocodeListOpen"
+                aria-controls="map-geocode-list"
+                @input="onGeocodeInput"
+                @focus="onGeocodeFocus"
+                @blur="onGeocodeBlur"
+                @keydown.esc.stop="onGeocodeEscape"
+              />
+            </label>
+            <ul
+              v-if="geocodeListOpen"
+              id="map-geocode-list"
+              class="map-page__geocode-list"
+              role="listbox"
+            >
+              <li
+                v-if="geocodeLoading"
+                class="map-page__geocode-item map-page__geocode-item--muted text-body-small"
+              >
+                搜尋中…
+              </li>
+              <li
+                v-for="feature in geocodeResults"
+                :key="feature.id"
+                class="map-page__geocode-item"
+                role="option"
+              >
+                <button
+                  type="button"
+                  class="map-page__geocode-pick text-body-small"
+                  @mousedown.prevent="selectGeocodeResult(feature)"
+                >
+                  {{ feature.display_name }}
+                </button>
+              </li>
+            </ul>
+          </div>
+        </div>
+
         <div ref="mapContainerEl" class="map-page__canvas" />
         <div class="map-page__locate-stack">
           <button
@@ -62,27 +108,35 @@
             aria-label="定位到目前位置"
             @click="onLocateMeClick"
           >
-            <Locate :size="18" aria-hidden="true" />
+            <Locate :size="16" aria-hidden="true" />
           </button>
           <p
             v-if="locateError"
-            class="map-page__locate-hint"
+            class="map-page__locate-hint text-body-small"
             role="alert"
           >
             {{ locateError }}
           </p>
         </div>
-        <div v-if="loading" class="map-page__overlay" aria-busy="true">
-          <span class="map-page__overlay-text">載入中…</span>
+        <div
+          v-if="loading || pointsReloading"
+          class="map-page__overlay"
+          aria-busy="true"
+        >
+          <span class="map-page__overlay-text text-body-medium">載入中…</span>
         </div>
       </div>
     </template>
 
     <p
-      v-if="!fetchError && !loading && !photoPoints.length"
-      class="map-page__empty-banner"
+      v-if="!fetchError && !loading && !pointsReloading && !photoPoints.length"
+      class="map-page__empty-banner text-body-small"
     >
-      尚無含座標的照片。請在旅程中上傳含 GPS 或已搜尋地點的照片。
+      {{
+        mapTab === "public"
+          ? "尚無公開且含座標的照片。"
+          : "尚無你含座標的照片。請在旅程中上傳含 GPS 或已搜尋地點的照片。"
+      }}
     </p>
 
     <div
@@ -199,7 +253,13 @@
 </template>
 
 <script setup lang="ts">
-import { GalleryHorizontal, LayoutGrid, Locate, X } from "lucide-vue-next"
+import {
+  GalleryHorizontal,
+  LayoutGrid,
+  Locate,
+  Search,
+  X,
+} from "lucide-vue-next"
 import { onBeforeRouteLeave } from "vue-router"
 
 const MAP_VIEW_STORAGE_KEY = "filmtrip-map-camera"
@@ -321,11 +381,11 @@ function isRestoreMapViewEntry(fromPath: string | null | undefined): boolean {
 
 const route = useRoute()
 
-/** 與 `layouts/default.vue` 共用：是否強制顯示 Header 返回鈕 */
-const layoutHeaderBackOverride = useState<boolean | null>(
-  "layout-header-back-override",
-  () => null,
-)
+const user = useSupabaseUser()
+
+/** 公開地圖：含座標的公開旅程照片；個人地圖：登入者含座標照片（含私人旅程） */
+type MapTabMode = "public" | "personal"
+const mapTab = ref<MapTabMode>("public")
 
 const DEFAULT_MAP_CENTER: [number, number] = [121.5, 24.25]
 const DEFAULT_MAP_ZOOM = 6.5
@@ -345,13 +405,17 @@ function parseMapQueryLatLng(): { lat: number; lng: number } | null {
 
 const hasQueryLatLng = computed(() => parseMapQueryLatLng() != null)
 
+function applyMapHeader() {
+  useHeader({
+    left: hasQueryLatLng.value ? "back" : null,
+    center: "地圖",
+  })
+}
+
 watch(
-  hasQueryLatLng,
-  (val) => {
-    /** layout 的 `watch(route.fullPath)` 會先把 override 清成 null，延到下一個 macrotask 再寫入 */
-    setTimeout(() => {
-      layoutHeaderBackOverride.value = val
-    }, 0)
+  () => route.fullPath,
+  () => {
+    applyMapHeader()
   },
   { immediate: true },
 )
@@ -387,6 +451,9 @@ const supabase = useSupabaseClient()
 
 const mapContainerEl = ref<HTMLElement | null>(null)
 const loading = ref(true)
+/** 地圖 `load` 後為 true，供 Tab 載入失敗時仍顯示地圖本體 */
+const mapReady = ref(false)
+const pointsReloading = ref(false)
 const locateError = ref("")
 let locateErrorClearTimer: ReturnType<typeof setTimeout> | null = null
 const fetchError = ref("")
@@ -407,6 +474,8 @@ const tripPhotoLightboxCaptions = computed(() =>
 )
 
 let map: MapLibreMap | null = null
+/** Tab 切換後更新標記時使用（與 map load 時相同引用） */
+let maplibreglModule: MapLibreGlobal | null = null
 const markers: MapLibreMarker[] = []
 /** `moveend` 時重算照片聚合標記，卸載時需 off */
 let photoMarkersMoveEndHandler: (() => void) | null = null
@@ -862,7 +931,7 @@ function createMapPhotoMarkerElement(
     badge.style.lineHeight = "1.2"
     badge.style.color = "#fff"
     badge.style.textAlign = "center"
-    badge.style.background = "#2563eb"
+    badge.style.background = "var(--color-gray-900)"
     badge.style.border = "2px solid #fff"
     badge.style.borderRadius = "999px"
     badge.style.boxShadow = "0 1px 4px rgba(15,23,42,0.25)"
@@ -994,60 +1063,17 @@ type TripRow = {
   end_date: string
 }
 
-onMounted(async () => {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  const userId = user?.id ?? null
-
-  const { data: publicRows, error: publicErr } = await supabase
-    .from("photos")
-    .select("id, trip_id, image_url, latitude, longitude, trips!inner(is_public)")
-    .eq("trips.is_public", true)
-    .not("latitude", "is", null)
-    .not("longitude", "is", null)
-
-  if (publicErr) {
-    fetchError.value = publicErr.message
-    loading.value = false
-    return
-  }
-
-  let ownRows: PhotoRowBase[] = []
-  if (userId) {
-    const { data: own, error: ownErr } = await supabase
-      .from("photos")
-      .select("id, trip_id, image_url, latitude, longitude")
-      .eq("user_id", userId)
-      .not("latitude", "is", null)
-      .not("longitude", "is", null)
-
-    if (ownErr) {
-      fetchError.value = ownErr.message
-      loading.value = false
-      return
-    }
-    ownRows = (own ?? []) as PhotoRowBase[]
-  }
-
-  const mergedById = new Map<string, PhotoRowBase>()
-  for (const r of publicRows ?? []) {
-    const row = r as PhotoRowBase
-    mergedById.set(row.id, row)
-  }
-  for (const r of ownRows) {
-    mergedById.set(r.id, r)
-  }
-
-  const list = [...mergedById.values()].filter(
+async function setPointsFromRows(
+  list: PhotoRowBase[],
+): Promise<string | null> {
+  const withCoords = list.filter(
     (r): r is typeof r & { latitude: number; longitude: number } =>
       typeof r.latitude === "number" &&
       typeof r.longitude === "number" &&
       Number.isFinite(r.latitude) &&
-      Number.isFinite(r.longitude)
+      Number.isFinite(r.longitude),
   )
-
-  const tripIds = [...new Set(list.map((r) => r.trip_id))]
+  const tripIds = [...new Set(withCoords.map((r) => r.trip_id))]
   let nameByTrip = new Map<string, string>()
   if (tripIds.length) {
     const { data: trips, error: tripsErr } = await supabase
@@ -1056,9 +1082,7 @@ onMounted(async () => {
       .in("id", tripIds)
 
     if (tripsErr) {
-      fetchError.value = tripsErr.message
-      loading.value = false
-      return
+      return tripsErr.message
     }
     const tripRows = (trips ?? []) as TripRow[]
     nameByTrip = new Map(tripRows.map((t) => [t.id, t.name]))
@@ -1071,11 +1095,12 @@ onMounted(async () => {
           startDate: t.start_date,
           endDate: t.end_date,
         },
-      ])
+      ]),
     )
+  } else {
+    tripSummaryById = new Map()
   }
-
-  photoPoints.value = list.map((r) => ({
+  photoPoints.value = withCoords.map((r) => ({
     id: r.id,
     tripId: r.trip_id,
     imageUrl: r.image_url,
@@ -1083,6 +1108,94 @@ onMounted(async () => {
     lat: r.latitude,
     tripName: nameByTrip.get(r.trip_id) ?? "未知旅程",
   }))
+  return null
+}
+
+async function loadPhotoPointsForMap(
+  tab: MapTabMode,
+  userId: string | null,
+): Promise<string | null> {
+  if (tab === "public") {
+    const { data: publicRows, error: publicErr } = await supabase
+      .from("photos")
+      .select(
+        "id, trip_id, image_url, latitude, longitude, trips!inner(is_public)",
+      )
+      .eq("trips.is_public", true)
+      .not("latitude", "is", null)
+      .not("longitude", "is", null)
+
+    if (publicErr) {
+      return publicErr.message
+    }
+    return await setPointsFromRows((publicRows ?? []) as PhotoRowBase[])
+  }
+
+  if (!userId) {
+    photoPoints.value = []
+    tripSummaryById = new Map()
+    return null
+  }
+  const { data: own, error: ownErr } = await supabase
+    .from("photos")
+    .select("id, trip_id, image_url, latitude, longitude")
+    .eq("user_id", userId)
+    .not("latitude", "is", null)
+    .not("longitude", "is", null)
+
+  if (ownErr) {
+    return ownErr.message
+  }
+  return await setPointsFromRows((own ?? []) as PhotoRowBase[])
+}
+
+function onMapTabClick(next: MapTabMode) {
+  if (next === "personal" && !user.value) {
+    void navigateTo("/login")
+    return
+  }
+  if (mapTab.value === next) return
+  mapTab.value = next
+  void reloadMapPhotoPoints()
+}
+
+async function reloadMapPhotoPoints() {
+  pointsReloading.value = true
+  try {
+    const {
+      data: { user: u },
+    } = await supabase.auth.getUser()
+    const uid = u?.id ?? null
+    const err = await loadPhotoPointsForMap(mapTab.value, uid)
+    if (err) {
+      fetchError.value = err
+      photoPoints.value = []
+      if (maplibreglModule) {
+        clearPhotoMarkers()
+      }
+      return
+    }
+    fetchError.value = ""
+    if (maplibreglModule) {
+      updatePhotoMarkers(maplibreglModule)
+    }
+  } finally {
+    pointsReloading.value = false
+  }
+}
+
+onMounted(async () => {
+  const {
+    data: { user: authUser },
+  } = await supabase.auth.getUser()
+  const userId = authUser?.id ?? null
+
+  const dataErr = await loadPhotoPointsForMap(mapTab.value, userId)
+  if (dataErr) {
+    fetchError.value = dataErr
+    loading.value = false
+    return
+  }
 
   await nextTick()
 
@@ -1099,6 +1212,8 @@ onMounted(async () => {
     loading.value = false
     return
   }
+
+  maplibreglModule = maplibregl
 
   const initialView = await resolveMapInitialView()
 
@@ -1123,11 +1238,10 @@ onMounted(async () => {
   mapUi.scrollZoom.setZoomRate(1 / 35)
   mapUi.touchZoomRotate.enable({ around: "center" })
 
-  map.addControl(new maplibregl.NavigationControl(), "top-right")
-
   map.on("load", () => {
     if (!map) return
     loading.value = false
+    mapReady.value = true
 
     photoMarkersMoveEndHandler = () => {
       updatePhotoMarkers(maplibregl)
@@ -1143,6 +1257,7 @@ onBeforeRouteLeave(() => {
 
 onBeforeUnmount(() => {
   persistMapCameraState()
+  mapReady.value = false
   document.body.style.overflow = ""
   if (locateErrorClearTimer) {
     clearTimeout(locateErrorClearTimer)
@@ -1161,6 +1276,7 @@ onBeforeUnmount(() => {
   clearPhotoMarkers()
   map?.remove()
   map = null
+  maplibreglModule = null
 })
 </script>
 
@@ -1169,27 +1285,56 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
-  /* 約等於 100dvh 減去 default layout 頂部導覽列（還原全域鎖捲動後避免與 header 疊加高度） */
+  /* default layout 頂部 52px（3.25rem）導覽列 */
   height: calc(100dvh - 3.25rem);
   max-height: calc(100dvh - 3.25rem);
   overflow-x: hidden;
   overflow-y: visible;
-  background: var(--color-bg);
+  background: var(--color-white);
 }
 
-.map-page__search {
+.map-page__tabs {
+  display: flex;
   flex-shrink: 0;
-  box-sizing: border-box;
+  gap: 0.75rem;
+  align-items: stretch;
   width: 100%;
-  padding: 0.65rem 1rem;
-  background: #fff;
-  border-bottom: 1px solid var(--color-border);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  box-sizing: border-box;
+  background: var(--color-white);
 }
 
-.map-page__geocode {
-  position: relative;
-  width: 100%;
-  z-index: 5;
+.map-page__tab {
+  flex: 1 1 0;
+  margin: 0;
+  padding: 0.5rem 0.25rem;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--color-gray-500);
+  cursor: pointer;
+  box-sizing: border-box;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease;
+
+  &:focus-visible {
+    outline: 2px solid var(--color-gray-900);
+    outline-offset: 2px;
+  }
+
+  &--active {
+    border-bottom-color: var(--color-gray-900);
+    color: var(--color-gray-900);
+  }
+
+  /* Figma Map tab：Body/Medium、Body/Medium-Bold，line-height 100% */
+  span {
+    line-height: 1;
+  }
 }
 
 .map-page__body {
@@ -1199,13 +1344,93 @@ onBeforeUnmount(() => {
   min-height: 0;
   width: 100%;
   overflow: visible;
+  background: var(--color-gray-100);
+}
+
+.map-page__search-float {
+  position: absolute;
+  top: 12px;
+  left: 16px;
+  right: 16px;
+  z-index: 10;
+  pointer-events: none;
+
+  .map-page__geocode {
+    pointer-events: auto;
+  }
+}
+
+.map-page__geocode {
+  position: relative;
+  width: 100%;
+}
+
+.map-page__geocode-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  background: var(--color-white);
+  border: 1px solid var(--color-gray-100);
+  border-radius: 0.5rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  cursor: text;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+
+  &:focus-within {
+    border-color: var(--color-gray-900);
+    box-shadow:
+      0 2px 4px rgba(0, 0, 0, 0.1),
+      0 0 0 1px var(--color-gray-900);
+  }
+}
+
+.map-page__geocode-icon {
+  flex-shrink: 0;
+  color: var(--color-gray-200);
+}
+
+.map-page__geocode-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.map-page__geocode-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  line-height: 1;
+  color: var(--color-gray-900);
+  background: transparent;
+  border: none;
+  box-shadow: none;
+
+  &::placeholder {
+    color: var(--color-gray-200);
+  }
+
+  &:focus {
+    outline: none;
+  }
 }
 
 .map-page__locate-stack {
-  position: fixed;
-  bottom: calc(80px + env(safe-area-inset-bottom, 0px));
-  right: calc(10px + env(safe-area-inset-right, 0px));
-  z-index: 9999;
+  position: absolute;
+  bottom: calc(3.25rem + env(safe-area-inset-bottom, 0px) + 0.75rem);
+  right: calc(0.75rem + env(safe-area-inset-right, 0px));
+  z-index: 9;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
@@ -1223,24 +1448,24 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
-  width: 29px;
-  height: 29px;
+  width: 1.75rem;
+  height: 1.75rem;
   margin: 0;
   padding: 0;
-  color: #333;
-  background: #fff;
+  color: var(--color-gray-900);
+  background: var(--color-white);
   border: none;
-  border-radius: 4px;
-  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.1);
+  border-radius: 50%;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   cursor: pointer;
   transition: background 0.15s ease;
 
   &:hover {
-    background: #f3f4f6;
+    background: var(--color-gray-100);
   }
 
   &:focus-visible {
-    outline: 2px solid var(--color-accent);
+    outline: 2px solid var(--color-gray-900);
     outline-offset: 2px;
   }
 }
@@ -1248,7 +1473,6 @@ onBeforeUnmount(() => {
 .map-page__locate-hint {
   margin: 0;
   padding: 0.35rem 0.5rem;
-  font-size: 0.75rem;
   line-height: 1.35;
   color: var(--color-danger);
   text-align: right;
@@ -1260,7 +1484,7 @@ onBeforeUnmount(() => {
 .map-page__overlay {
   position: absolute;
   inset: 0;
-  z-index: 2;
+  z-index: 15;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1269,22 +1493,19 @@ onBeforeUnmount(() => {
 }
 
 .map-page__overlay-text {
-  font-size: 0.875rem;
-  color: var(--color-text-muted);
+  color: var(--color-gray-500);
 }
 
 .map-page__empty-banner {
   flex-shrink: 0;
   margin: 0;
   padding: 0.5rem 1.25rem 1rem;
-  font-size: 0.8125rem;
-  color: var(--color-text-muted);
+  color: var(--color-gray-500);
 }
 
 .map-page__error {
   margin: 0;
   padding: 0.75rem 1.25rem;
-  font-size: 0.875rem;
   color: var(--color-danger);
 }
 
@@ -1296,60 +1517,20 @@ onBeforeUnmount(() => {
   height: 100%;
 }
 
-.map-page__geocode-label {
-  display: block;
-}
-
-.map-page__geocode-sr {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
-
-.map-page__geocode-input {
-  box-sizing: border-box;
-  width: 100%;
-  margin: 0;
-  padding: 0.4rem 0.55rem;
-  font-size: 0.8125rem;
-  line-height: 1.3;
-  color: var(--color-text);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: 0.45rem;
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
-
-  &::placeholder {
-    color: var(--color-text-muted);
-  }
-
-  &:focus {
-    outline: none;
-    border-color: var(--color-accent);
-    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
-  }
-}
-
 .map-page__geocode-list {
   position: absolute;
   left: 0;
   right: 0;
-  top: 100%;
-  z-index: 6;
+  top: calc(100% + 0.28rem);
+  z-index: 11;
   list-style: none;
-  margin: 0.28rem 0 0;
+  margin: 0;
   padding: 0.2rem 0;
   max-height: 14rem;
   overflow-y: auto;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: 0.45rem;
+  background: var(--color-white);
+  border: 1px solid var(--color-gray-100);
+  border-radius: 0.5rem;
   box-shadow: 0 6px 18px rgba(15, 23, 42, 0.14);
   -webkit-overflow-scrolling: touch;
 }
@@ -1360,8 +1541,7 @@ onBeforeUnmount(() => {
 
 .map-page__geocode-item--muted {
   padding: 0.4rem 0.65rem;
-  font-size: 0.75rem;
-  color: var(--color-text-muted);
+  color: var(--color-gray-500);
 }
 
 .map-page__geocode-pick {
@@ -1372,14 +1552,13 @@ onBeforeUnmount(() => {
   border: none;
   background: transparent;
   text-align: left;
-  font-size: 0.75rem;
   line-height: 1.35;
-  color: var(--color-text);
+  color: var(--color-gray-900);
   cursor: pointer;
 
   &:hover,
   &:focus-visible {
-    background: rgba(37, 99, 235, 0.08);
+    background: rgba(17, 17, 17, 0.06);
   }
 
   &:focus-visible {

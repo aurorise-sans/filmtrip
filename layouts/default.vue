@@ -208,7 +208,7 @@ watch(
     align-items: center;
     height: calc(52px + env(safe-area-inset-top, 0px));
     padding: env(safe-area-inset-top, 0px) 1.25rem 0;
-    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.04);
     background: #fff;
     box-sizing: border-box;
   }

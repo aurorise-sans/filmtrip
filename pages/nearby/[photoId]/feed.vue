@@ -204,6 +204,16 @@ const startPhotoId = computed(() => {
   return typeof raw === "string" ? raw : Array.isArray(raw) ? raw[0] ?? "" : ""
 })
 
+/** 從地圖標記進入須納入「中心照片」；從 nearby 頁進入則排除中心（維持原邏輯） */
+const feedEntryFromMap = computed(
+  () =>
+    (typeof route.query.from === "string"
+      ? route.query.from
+      : Array.isArray(route.query.from)
+        ? route.query.from[0]
+        : "") === "map",
+)
+
 type TripEmbed = {
   id: string
   name: string
@@ -256,7 +266,10 @@ const supabase = useSupabaseClient()
 const user = useSupabaseUser()
 
 const scrollStorageKey = computed(
-  () => `filmtrip-nearby-feed-scroll-y:${photoId.value}:${startPhotoId.value}`,
+  () =>
+    `filmtrip-nearby-feed-scroll-y:${photoId.value}:${startPhotoId.value}:${
+      feedEntryFromMap.value ? "map" : "nearby"
+    }`,
 )
 
 const nearbyFeedScrollYRestore = useState<number | null>(
@@ -281,9 +294,11 @@ const bookmarkSheetPhotoId = ref<string | null>(null)
 const intrinsicByPhotoId = ref<Record<string, { w: number; h: number }>>({})
 
 const { data, pending, error } = await useAsyncData(
-  () => `nearby-feed-${photoId.value}`,
+  () =>
+    `nearby-feed-${photoId.value}-${feedEntryFromMap.value ? "map" : "nearby"}`,
   async (): Promise<NearbyFeedResult> => {
     const centerId = photoId.value
+    const includeCenterInFeed = feedEntryFromMap.value
     if (!centerId) return { center: null, items: [] }
 
     const { data: centerRow, error: centerErr } = await supabase
@@ -314,7 +329,9 @@ const { data, pending, error } = await useAsyncData(
     const centerLng = center.longitude
     const within500m = ((allRows ?? []) as PhotoRow[]).filter((row) => {
       if (row.latitude == null || row.longitude == null) return false
-      if (row.id === center.id) return false
+      if (row.id === center.id) {
+        return includeCenterInFeed
+      }
       const d = haversineDistanceMeters(
         centerLat,
         centerLng,
@@ -393,7 +410,7 @@ const { data, pending, error } = await useAsyncData(
 
     return { center, items }
   },
-  { watch: [photoId] },
+  { watch: [photoId, feedEntryFromMap] },
 )
 
 const fetchError = computed(() => error.value?.message ?? "")

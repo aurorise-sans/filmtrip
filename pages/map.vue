@@ -626,6 +626,7 @@ function selectGeocodeResult(feature: NominatimGeocodeResult) {
   map.flyTo({
     center: [feature.lng, feature.lat],
     zoom: GEOCODE_FLY_ZOOM,
+    duration: 1200,
     essential: true,
   })
 }
@@ -732,6 +733,7 @@ function onLocateMeClick() {
       map.flyTo({
         center: [longitude, latitude],
         zoom: QUERY_PHOTO_FLY_ZOOM,
+        duration: 1200,
         essential: true,
       })
     },
@@ -791,6 +793,36 @@ type AggregatedMapPhoto = {
   imageUrl: string
   photoId: string
   count: number
+}
+
+/** OpenFreeMap 向量圖層：地名優先繁中 → 預設 → 英文（不使用 name:zh 簡中） */
+const MAP_SYMBOL_TEXT_FIELD: [
+  "coalesce",
+  ["get", "name:zh-Hant"],
+  ["get", "name"],
+  ["get", "name:en"],
+] = [
+  "coalesce",
+  ["get", "name:zh-Hant"],
+  ["get", "name"],
+  ["get", "name:en"],
+]
+
+function applyOpenFreeMapChineseLabels(m: MapLibreMap) {
+  const style = m.getStyle()
+  const layers = style.layers
+  if (!layers?.length) return
+  for (const layer of layers) {
+    if (layer.type !== "symbol") continue
+    const layout = layer.layout
+    if (!layout || !Object.prototype.hasOwnProperty.call(layout, "text-field"))
+      continue
+    try {
+      m.setLayoutProperty(layer.id, "text-field", MAP_SYMBOL_TEXT_FIELD)
+    } catch {
+      /* 部分圖層來源未就緒或不支援 */
+    }
+  }
 }
 
 /** 依目前 zoom 決定畫面上聚合半徑（像素）：zoom 越低半徑越大、越容易合併 */
@@ -913,7 +945,10 @@ function createMapPhotoMarkerElement(
       onClusterClick()
       return
     }
-    void navigateTo(`/photos/${photoId}`)
+    void navigateTo({
+      path: `/nearby/${photoId}/feed`,
+      query: { start: photoId, from: "map" },
+    })
   })
 
   if (count > 1) {
@@ -1242,6 +1277,8 @@ onMounted(async () => {
     if (!map) return
     loading.value = false
     mapReady.value = true
+
+    applyOpenFreeMapChineseLabels(map)
 
     photoMarkersMoveEndHandler = () => {
       updatePhotoMarkers(maplibregl)

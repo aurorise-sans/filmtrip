@@ -20,7 +20,22 @@ declare global {
     once: (type: string, listener: (e?: unknown) => void) => void
     loaded: () => boolean
     resize: () => void
-    flyTo: (options: { center: [number, number]; zoom?: number; essential?: boolean }) => void
+    flyTo: (options: {
+      center: [number, number]
+      zoom?: number
+      essential?: boolean
+      duration?: number
+    }) => void
+    getCenter: () => { lng: number; lat: number }
+    getZoom: () => number
+    getStyle: () => {
+      layers?: Array<{
+        id: string
+        type: string
+        layout?: Record<string, unknown>
+      }>
+    }
+    setLayoutProperty: (layerId: string, prop: string, value: unknown) => void
     fitBounds: (bounds: MapLibreLngLatBounds, options: Record<string, unknown>) => void
     remove: () => void
   }
